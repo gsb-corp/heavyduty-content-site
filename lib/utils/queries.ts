@@ -9,7 +9,7 @@ import type { Category, Cycle, Assignee, CycleTask, TaskStatus, ActionType, Prog
 export async function fetchCategories(): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')
-    .select('id, name, subtitle, season, reliability, keywords, assignee_id, peak_date, track')
+    .select('id, name, subtitle, season, reliability, keywords, assignee_id, peak_date, track, lead_offset_weeks')
     .eq('active', true)
     .order('sort_order');
 
@@ -321,6 +321,15 @@ export async function setCategoryPeakDate(categoryId: string, peakDate: string |
   const { error } = await supabase
     .from('categories')
     .update({ peak_date: peakDate })
+    .eq('id', categoryId);
+  if (error) throw error;
+}
+
+/** 카테고리 일정 오프셋 수정 (정점 고정, 전체 N주 당김+/늦춤-) */
+export async function setCategoryLeadOffset(categoryId: string, weeks: number) {
+  const { error } = await supabase
+    .from('categories')
+    .update({ lead_offset_weeks: weeks })
     .eq('id', categoryId);
   if (error) throw error;
 }

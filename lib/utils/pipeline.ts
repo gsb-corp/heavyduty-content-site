@@ -68,12 +68,13 @@ export function buildStageViews(
 ): StageView[] {
   if (!category.peak_date) return [];
   const peak = new Date(category.peak_date);
+  const offset = category.lead_offset_weeks ?? 0; // 정점 고정, 전체 N주 당김(+)/늦춤(-)
   const stageByType = Object.fromEntries(stages.map((s) => [s.stage_type, s]));
 
   return STAGE_DEFS.map((def) => {
     const saved = stageByType[def.type];
     const status: TaskStatus = saved?.status || 'todo';
-    const deadline = stageDeadline(peak, def.weeksBeforePeak);
+    const deadline = stageDeadline(peak, def.weeksBeforePeak + offset);
     return {
       categoryId: category.id,
       categoryName: category.name,
@@ -215,9 +216,9 @@ const CONTENT_PATTERN: { day: string; offset: number; type: string; culture?: bo
   { day: '일', offset: 6, type: 'OOTD 릴스' },
 ];
 
-/** 정점 날짜 → 발행 주차(정점 -2주)의 6콘텐츠 (월~일) */
-export function publishContents(peakDate: Date): ContentItem[] {
-  const publishMonday = weekMonday(stageDeadline(peakDate, 2));
+/** 정점 날짜 → 발행 주차(정점 -2주, 오프셋 반영)의 6콘텐츠 (월~일) */
+export function publishContents(peakDate: Date, offsetWeeks = 0): ContentItem[] {
+  const publishMonday = weekMonday(stageDeadline(peakDate, 2 + offsetWeeks));
   return CONTENT_PATTERN.map((c) => {
     const date = new Date(publishMonday);
     date.setDate(date.getDate() + c.offset);

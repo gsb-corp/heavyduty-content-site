@@ -31,6 +31,7 @@ export interface Category {
   assignee_id?: string | null;
   peak_date?: string | null;   // "2026-10-07" — 시즌 카테고리만, 포시즌은 null
   track?: 'season' | 'postseason';
+  lead_offset_weeks?: number;  // 정점 고정, 전체 일정을 N주 당김(+)/늦춤(-) — 기본 0
 }
 
 export interface CategoryData {

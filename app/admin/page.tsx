@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import type { Assignee } from '@/lib/data/types';
-import { fetchAssignees, addAssignee, deleteAssignee, setCategoryPeakDate } from '@/lib/utils/queries';
+import { fetchAssignees, addAssignee, deleteAssignee, setCategoryPeakDate, setCategoryLeadOffset } from '@/lib/utils/queries';
 import { STAGE_DEFS, stageDeadlineLabel } from '@/lib/utils/admin-helpers';
 
 const CARD_BORDER = '2px solid #A3A3A3';
@@ -19,6 +19,7 @@ interface CatRow {
   track: string | null;
   active: boolean;
   sort_order: number;
+  lead_offset_weeks: number;
 }
 
 export default function AdminPage() {
@@ -30,7 +31,7 @@ export default function AdminPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from('categories')
-      .select('id, name, subtitle, season, peak_date, track, active, sort_order')
+      .select('id, name, subtitle, season, peak_date, track, active, sort_order, lead_offset_weeks')
       .eq('active', true)
       .order('sort_order');
     if (error) { alert('로드 실패: ' + error.message); }
@@ -45,6 +46,16 @@ export default function AdminPage() {
     const peak = value || null;
     setCats((prev) => prev.map((c) => (c.id === id ? { ...c, peak_date: peak } : c)));
     try { await setCategoryPeakDate(id, peak); } catch (e: any) { alert('저장 실패: ' + e.message); loadAll(); }
+  }
+
+  async function changeOffset(id: string, delta: number) {
+    let next = 0;
+    setCats((prev) => prev.map((c) => {
+      if (c.id !== id) return c;
+      next = Math.max(-4, Math.min(4, (c.lead_offset_weeks ?? 0) + delta));
+      return { ...c, lead_offset_weeks: next };
+    }));
+    try { await setCategoryLeadOffset(id, next); } catch (e: any) { alert('저장 실패: ' + e.message); loadAll(); }
   }
 
   if (loading) {
@@ -64,7 +75,7 @@ export default function AdminPage() {
         <header className="pb-6 mb-10" style={{ borderBottom: STRONG_BORDER }}>
           <div className="font-mono text-[11px] tracking-[0.2em] text-[#737373] uppercase mb-3 font-medium">Admin</div>
           <h1 className="text-[48px] font-bold tracking-[-0.025em] leading-[1.0]">관리자</h1>
-          <p className="text-sm text-[#404040] mt-3">정점 날짜만 바꾸면 발주·배송·케어·제작·발행 데드라인이 모두 자동 재계산됩니다.</p>
+          <p className="text-sm text-[#404040] mt-3">정점 날짜만 바꾸면 발주·배송·케어·제작·발행 데드라인이 모두 자동 재계산됩니다.<br /><span className="text-[#737373]">「전체 일정」 +는 정점은 고정한 채 발주~발행 전체를 그만큼 <b>일찍</b> 당깁니다 (발행 빈 주 메우기용).</span></p>
         </header>
 
         {/* 담당자 */}
@@ -90,24 +101,36 @@ export default function AdminPage() {
                     <div className="font-bold text-lg">{c.name}</div>
                     <div className="font-mono text-[10px] tracking-[0.15em] uppercase text-[#737373] mt-1">{c.subtitle} · {c.season}</div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <label className="font-mono text-[10px] tracking-[0.15em] uppercase text-[#737373]">정점 날짜</label>
-                    <input
-                      type="date"
-                      value={c.peak_date || ''}
-                      onChange={(e) => changePeak(c.id, e.target.value)}
-                      className="text-sm px-3 py-2 font-mono tabular bg-white"
-                      style={{ border: '2px solid #000' }}
-                    />
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <label className="font-mono text-[10px] tracking-[0.15em] uppercase text-[#737373]">정점 날짜</label>
+                      <input
+                        type="date"
+                        value={c.peak_date || ''}
+                        onChange={(e) => changePeak(c.id, e.target.value)}
+                        className="text-sm px-3 py-2 font-mono tabular bg-white"
+                        style={{ border: '2px solid #000' }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="font-mono text-[10px] tracking-[0.15em] uppercase text-[#737373]">전체 일정</label>
+                      <div className="flex items-center" style={{ border: '2px solid #000' }}>
+                        <button onClick={() => changeOffset(c.id, -1)} className="px-2.5 py-1.5 font-bold hover:bg-black hover:text-white transition-colors" title="1주 늦추기">−</button>
+                        <span className="px-3 py-1.5 font-mono tabular text-sm font-bold text-center" style={{ borderLeft: '2px solid #000', borderRight: '2px solid #000', minWidth: 64 }}>
+                          {(c.lead_offset_weeks ?? 0) === 0 ? '기준' : (c.lead_offset_weeks ?? 0) > 0 ? `${c.lead_offset_weeks}주 일찍` : `${Math.abs(c.lead_offset_weeks ?? 0)}주 늦게`}
+                        </span>
+                        <button onClick={() => changeOffset(c.id, 1)} className="px-2.5 py-1.5 font-bold hover:bg-black hover:text-white transition-colors" title="1주 당기기">+</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                {/* 자동 계산된 단계 데드라인 미리보기 */}
+                {/* 자동 계산된 단계 데드라인 미리보기 (오프셋 반영) */}
                 {c.peak_date && (
                   <div className="mt-4 pt-3 flex gap-2 flex-wrap" style={{ borderTop: '1.5px solid #A3A3A3' }}>
                     {STAGE_DEFS.map((s) => (
                       <div key={s.type} className="px-2.5 py-1.5 bg-[#F5F5F5] text-center" style={{ border: '1px solid #D4D4D4' }}>
                         <div className="font-mono text-[9px] tracking-wide text-[#737373] uppercase">{s.short}</div>
-                        <div className="font-mono text-[11px] tabular font-bold">{stageDeadlineLabel(c.peak_date!, s.weeksBeforePeak)}</div>
+                        <div className="font-mono text-[11px] tabular font-bold">{stageDeadlineLabel(c.peak_date!, s.weeksBeforePeak + (c.lead_offset_weeks ?? 0))}</div>
                       </div>
                     ))}
                   </div>

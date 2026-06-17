@@ -321,6 +321,23 @@ function GridView({
   const monthOfWeek: number[] = [];
   monthGroups.forEach((g, gi) => { for (let k = 0; k < g.count; k++) monthOfWeek[g.startIdx + k] = gi; });
 
+  // 주차별 발행 카테고리 (발행 단계의 주 인덱스 기준)
+  const publishByWeek: Record<number, string[]> = {};
+  for (const cat of seasonCats) {
+    const pv = (stagesByCat[cat.id] || []).find((v) => v.stageType === 'publish');
+    if (!pv) continue;
+    const wi = weekIndexOf(weeks, pv.deadline);
+    if (wi >= 0) (publishByWeek[wi] ||= []).push(cat.name);
+  }
+  const pubIdxs = Object.keys(publishByWeek).map(Number).sort((a, b) => a - b);
+  const firstPubIdx = pubIdxs[0] ?? -1;
+  const lastPubIdx = pubIdxs[pubIdxs.length - 1] ?? -1;
+  // 발행 윈도우(첫 발행~마지막 발행) 내에서 발행이 0인 주 = 포시즌 채울 곳
+  const emptyWeekSet = new Set<number>();
+  if (firstPubIdx >= 0) {
+    for (let i = firstPubIdx; i <= lastPubIdx; i++) if (!publishByWeek[i]) emptyWeekSet.add(i);
+  }
+
   // 완료/진행/대기 셀 색
   const cellStyleFor = (v: StageView): { bg: string; fg: string; mark: string } => {
     if (v.status === 'done') return { bg: '#1A7F37', fg: '#FFFFFF', mark: '✓' };       // 완료 = 초록
@@ -337,6 +354,7 @@ function GridView({
       <span className="flex items-center gap-1.5"><span style={{display:'inline-block',width:12,height:12,background:'#FFFFFF',border:'1.5px solid #A3A3A3'}}></span>대기</span>
       <span className="flex items-center gap-1.5"><span style={{display:'inline-block',width:12,height:12,background:'#FFC400'}}></span>진행</span>
       <span className="flex items-center gap-1.5"><span style={{display:'inline-block',width:12,height:12,background:'#1A7F37'}}></span>완료</span>
+      <span className="flex items-center gap-1.5"><span style={{display:'inline-block',width:12,height:12,background:'#FFE8B3',border:'1px solid #D9A441'}}></span>발행 빈 주 → 포시즌 투입</span>
     </div>
     <div className="overflow-x-auto" style={{ border: STRONG_BORDER }}>
       <div style={{ minWidth: CAT_W + weeks.length * MIN_COL }}>
@@ -377,7 +395,7 @@ function GridView({
             if (wi >= 0) { cellByWeek[wi] = v; minWi = Math.min(minWi, wi); maxWi = Math.max(maxWi, wi); }
           }
           const isExpanded = expanded === cat.id;
-          const contents = cat.peak_date ? publishContents(new Date(cat.peak_date)) : [];
+          const contents = cat.peak_date ? publishContents(new Date(cat.peak_date), cat.lead_offset_weeks ?? 0) : [];
           const peakWi = cat.peak_date ? weekIndexOf(weeks, new Date(cat.peak_date)) : -1;
           const cc = catColor(catIdx);
           const rowBg = `${cc}10`;  // 카테고리 색 아주 옅게 (행 전체 옅은 틴트)
@@ -476,9 +494,36 @@ function GridView({
           );
         })}
 
+        {/* ── 주간 발행 현황 (📣 있는 주 / 비어서 포시즌 채울 주) ── */}
+        <div className="flex" style={{ borderTop: '3px solid #000' }}>
+          <div className="shrink-0 px-3 py-2 font-mono text-[9px] tracking-widest uppercase font-bold flex items-center" style={{ width: CAT_W, position: 'sticky', left: 0, background: '#FFF', borderRight: '2px solid #000', zIndex: 1, color: '#404040' }}>
+            📣 주간 발행
+          </div>
+          {weeks.map((w, i) => {
+            const pubs = publishByWeek[i];
+            const isEmpty = emptyWeekSet.has(i);
+            const monthStart = monthGroups.find((g) => g.startIdx === i);
+            const leftBorder = monthStart && i > 0 ? '2px solid #000' : '1px solid #EDEDED';
+            return (
+              <div
+                key={i}
+                title={pubs ? pubs.join(', ') + ' 발행' : isEmpty ? '이 주는 발행 없음 → 아래 포시즌 칸을 채우세요' : ''}
+                className="flex items-center justify-center py-1.5"
+                style={{ flex: 1, minWidth: MIN_COL, borderLeft: leftBorder, background: pubs ? '#E8F3EC' : isEmpty ? '#FFE8B3' : '#FAFAFA' }}
+              >
+                {pubs
+                  ? <span className="text-[12px] leading-none font-bold">📣{pubs.length > 1 ? <span className="text-[9px]">×{pubs.length}</span> : ''}</span>
+                  : isEmpty
+                  ? <span className="text-[13px] leading-none font-bold" style={{ color: '#B45309' }}>↓</span>
+                  : <span className="text-[#D4D4D4] text-[10px] leading-none">·</span>}
+              </div>
+            );
+          })}
+        </div>
+
         {/* ── 포시즌 행 (청바지·모자·폴로) — 칸 클릭으로 단계 선택 ── */}
         {postCats.length > 0 && (
-          <div className="flex" style={{ borderTop: '3px solid #000', background: '#EEE' }}>
+          <div className="flex" style={{ background: '#EEE' }}>
             <div className="shrink-0 px-3 py-1.5 font-mono text-[9px] tracking-widest uppercase text-[#737373] font-bold" style={{ width: CAT_W, position: 'sticky', left: 0, background: '#EEE', borderRight: '2px solid #000', zIndex: 1 }}>
               포시즌 (칸 클릭 = 단계 선택)
             </div>
@@ -514,7 +559,7 @@ function GridView({
                     onClick={(e) => onOpenPostPicker(cat.id, iso, e.clientX, e.clientY)}
                     title={`${cat.name} · ${w.getMonth() + 1}/${w.getDate()} 주${has ? ' · ' + cellStages.map((s) => STAGE_SHORT[s]).join(',') : ''} · 클릭=단계 선택`}
                     className="flex flex-wrap items-center justify-center py-2 px-0.5 gap-0.5 transition-opacity hover:opacity-70"
-                    style={{ flex: 1, minWidth: MIN_COL, borderLeft: leftBorder, background: has ? '#E8F3EC' : (isToday ? '#FBE9E7' : rowBg) }}
+                    style={{ flex: 1, minWidth: MIN_COL, borderLeft: leftBorder, background: has ? '#E8F3EC' : emptyWeekSet.has(i) ? '#FFF4D6' : (isToday ? '#FBE9E7' : rowBg) }}
                   >
                     {has
                       ? cellStages.map((s) => <span key={s} className="text-[13px] leading-none">{STAGE_ICON[s]}</span>)
