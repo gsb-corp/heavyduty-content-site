@@ -1,0 +1,401 @@
+{
+  "version": "v13",
+  "verified_date": "2026-05-28",
+  "source": "네이버 데이터랩 2023~2025 / 남성 19~39세",
+  "model": {
+    "sourcing_lead_weeks": 8,
+    "open_offset_weeks": -2,
+    "golden_weeks": 4,
+    "peak_definition": "정점 시작 (90% 진입)"
+  },
+  "categories": [
+    {
+      "id": "padding",
+      "name": "패딩 · 다운파카",
+      "subtitle": "DOWN · HEAVY PADDING",
+      "season": "겨울",
+      "reliability": 3,
+      "keywords": [
+        {"name": "빈티지 패딩", "share": 54.5},
+        {"name": "헤비패딩", "share": 27.0},
+        {"name": "다운파카", "share": 18.5}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "겨울",
+          "sourcing_week": "10월 3주차",
+          "open_week": "11월 2주차",
+          "peak_week": "11월 4주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "mountain-parka",
+      "name": "마운틴파카 · 밀리터리",
+      "subtitle": "MOUNTAIN · MIL PARKA",
+      "season": "겨울",
+      "reliability": 3,
+      "keywords": [
+        {"name": "마운틴파카", "share": 87.5},
+        {"name": "밀리터리파카", "share": 12.5}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "겨울",
+          "sourcing_week": "10월 2주차",
+          "open_week": "11월 1주차",
+          "peak_week": "11월 3주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "heavy-sweater",
+      "name": "헤비 스웨터 · 코위찬",
+      "subtitle": "HEAVY WOOL · COWICHAN",
+      "season": "겨울",
+      "reliability": 2,
+      "keywords": [
+        {"name": "코위찬", "share": 97.9},
+        {"name": "피셔맨 스웨터", "share": 1.3},
+        {"name": "빈티지 스웨터", "share": 0.8}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "겨울",
+          "sourcing_week": "10월 3주차",
+          "open_week": "11월 2주차",
+          "peak_week": "11월 4주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "vest-jumper",
+      "name": "점퍼 · 패딩베스트",
+      "subtitle": "JUMPER · PADDED VEST",
+      "season": "가을",
+      "reliability": 3,
+      "keywords": [
+        {"name": "패딩베스트", "share": 78.7},
+        {"name": "다운베스트", "share": 20.6}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "가을",
+          "sourcing_week": "9월 2주차",
+          "open_week": "10월 4주차",
+          "peak_week": "11월 2주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "corduroy",
+      "name": "코듀로이 자켓 · 팬츠",
+      "subtitle": "CORDUROY",
+      "season": "겨울",
+      "reliability": 3,
+      "keywords": [
+        {"name": "코듀로이 팬츠", "share": 40.3},
+        {"name": "코듀로이", "share": 38.6},
+        {"name": "코듀로이 자켓", "share": 21.0}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "겨울",
+          "sourcing_week": "10월 3주차",
+          "open_week": "11월 2주차",
+          "peak_week": "11월 4주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "fleece",
+      "name": "플리스 자켓",
+      "subtitle": "FLEECE JACKET",
+      "season": "가을",
+      "reliability": 3,
+      "keywords": [
+        {"name": "플리스", "share": 51.5},
+        {"name": "플리스 자켓", "share": 48.5}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "가을",
+          "sourcing_week": "9월 2주차",
+          "open_week": "10월 4주차",
+          "peak_week": "11월 2주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "sweatshirt",
+      "name": "맨투맨 · 후드티",
+      "subtitle": "SWEAT · HOODIE",
+      "season": "가을",
+      "reliability": 2,
+      "keywords": [
+        {"name": "맨투맨", "share": 91.4},
+        {"name": "스웨트셔츠", "share": 3.7},
+        {"name": "챔피언 맨투맨", "share": 2.8},
+        {"name": "러셀 맨투맨", "share": 2.1}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "가을",
+          "sourcing_week": "8월 1주차",
+          "open_week": "9월 3주차",
+          "peak_week": "10월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 100,
+          "note": "사용자 직관 일치 — 9말 10초"
+        },
+        {
+          "type": "sub",
+          "season": "봄",
+          "sourcing_week": "1월 1주차",
+          "open_week": "2월 3주차",
+          "peak_week": "3월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 77
+        }
+      ]
+    },
+    {
+      "id": "hunting-jacket",
+      "name": "헌팅 · 워크 · 필드자켓",
+      "subtitle": "HUNTING · WORK · FIELD",
+      "season": "봄",
+      "reliability": 1,
+      "keywords": [
+        {"name": "워크자켓", "share": 52.3},
+        {"name": "데님자켓", "share": 23.5},
+        {"name": "헌팅자켓", "share": 17.3},
+        {"name": "필드자켓", "share": 6.9}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "봄",
+          "sourcing_week": "1월 1주차",
+          "open_week": "2월 2주차",
+          "peak_week": "2월 4주차",
+          "golden_weeks": 4,
+          "strength_pct": 100,
+          "note": "정점 1일 — 데이터 신뢰도 낮음"
+        }
+      ]
+    },
+    {
+      "id": "shell-parka",
+      "name": "쉘파카 (봄)",
+      "subtitle": "SHELL PARKA · 봄 환절기",
+      "season": "봄",
+      "reliability": 2,
+      "keywords": [
+        {"name": "쉘파카", "share": 100}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "봄",
+          "sourcing_week": "1월 1주차",
+          "open_week": "2월 3주차",
+          "peak_week": "3월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "denim",
+      "name": "데님 · 청바지",
+      "subtitle": "LEVI'S 501 · DENIM",
+      "season": "봄",
+      "reliability": 3,
+      "keywords": [
+        {"name": "청바지", "share": 42.2},
+        {"name": "리바이스 501", "share": 39.1},
+        {"name": "데님", "share": 9.4},
+        {"name": "데님팬츠", "share": 9.0}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "봄",
+          "sourcing_week": "12월 3주차 (전년)",
+          "open_week": "2월 1주차",
+          "peak_week": "2월 3주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        },
+        {
+          "type": "sub",
+          "season": "가을",
+          "sourcing_week": "8월 1주차",
+          "open_week": "9월 3주차",
+          "peak_week": "10월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 82,
+          "note": "사용자 직관 일치 — 봄·가을 두 번"
+        }
+      ]
+    },
+    {
+      "id": "anorak-coach",
+      "name": "아노락 · 코치자켓",
+      "subtitle": "ANORAK · COACH JACKET",
+      "season": "봄",
+      "reliability": 3,
+      "keywords": [
+        {"name": "아노락", "share": 83.3},
+        {"name": "코치자켓", "share": 15.0},
+        {"name": "빈티지 자켓", "share": 1.6}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "봄",
+          "sourcing_week": "1월 2주차",
+          "open_week": "2월 4주차",
+          "peak_week": "3월 2주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        },
+        {
+          "type": "sub",
+          "season": "가을",
+          "sourcing_week": "8월 1주차",
+          "open_week": "9월 3주차",
+          "peak_week": "10월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 99,
+          "note": "봄·가을 사실상 동급"
+        }
+      ]
+    },
+    {
+      "id": "work-shirt",
+      "name": "워크셔츠 · 체크셔츠",
+      "subtitle": "WORK · CHECK · 플란넬",
+      "season": "봄",
+      "reliability": 3,
+      "keywords": [
+        {"name": "폴로셔츠", "share": 56.9},
+        {"name": "셔츠", "share": 22.0},
+        {"name": "데님셔츠", "share": 9.4},
+        {"name": "체크셔츠", "share": 7.7},
+        {"name": "플란넬셔츠", "share": 4.0}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "봄",
+          "sourcing_week": "2월 1주차",
+          "open_week": "3월 3주차",
+          "peak_week": "4월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        },
+        {
+          "type": "sub",
+          "season": "가을",
+          "sourcing_week": "7월 3주차",
+          "open_week": "9월 1주차",
+          "peak_week": "9월 3주차",
+          "golden_weeks": 4,
+          "strength_pct": 96,
+          "note": "봄·가을 사실상 동급"
+        }
+      ]
+    },
+    {
+      "id": "chino-cargo",
+      "name": "치노 · 카고 · 워크팬츠",
+      "subtitle": "CHINO · CARGO · WORK",
+      "season": "봄",
+      "reliability": 1,
+      "keywords": [
+        {"name": "치노팬츠", "share": 36.8},
+        {"name": "카고팬츠", "share": 28.6},
+        {"name": "면바지", "share": 18.2},
+        {"name": "워크팬츠", "share": 9.1},
+        {"name": "치노", "share": 7.3}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "봄",
+          "sourcing_week": "1월 1주차",
+          "open_week": "2월 2주차",
+          "peak_week": "2월 4주차",
+          "golden_weeks": 4,
+          "strength_pct": 100,
+          "note": "정점 1일 — 데이터 신뢰도 낮음"
+        }
+      ]
+    },
+    {
+      "id": "tshirt",
+      "name": "반팔 티셔츠",
+      "subtitle": "T-SHIRT · 반팔셔츠",
+      "season": "여름",
+      "reliability": 3,
+      "keywords": [
+        {"name": "반팔티", "share": 51.8},
+        {"name": "티셔츠", "share": 26.8},
+        {"name": "반팔셔츠", "share": 21.4}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "여름",
+          "sourcing_week": "3월 3주차",
+          "open_week": "5월 1주차",
+          "peak_week": "5월 3주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    },
+    {
+      "id": "shorts",
+      "name": "반바지 · 카고쇼츠",
+      "subtitle": "SHORTS · CARGO SHORTS",
+      "season": "여름",
+      "reliability": 2,
+      "keywords": [
+        {"name": "반바지", "share": 96.2},
+        {"name": "남자쇼츠", "share": 2.9}
+      ],
+      "cycles": [
+        {
+          "type": "main",
+          "season": "여름",
+          "sourcing_week": "5월 1주차",
+          "open_week": "6월 3주차",
+          "peak_week": "7월 1주차",
+          "golden_weeks": 4,
+          "strength_pct": 100
+        }
+      ]
+    }
+  ]
+}

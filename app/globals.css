@@ -1,26 +1,98 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Background */
+  --bg:           #FFFFFF;
+  --bg-card:      #FFFFFF;
+  --bg-hover:     #F5F5F5;
+  --bg-invert:    #000000;
+
+  /* Foreground */
+  --fg:           #000000;
+  --fg-soft:      #404040;
+  --fg-mute:      #737373;
+  --fg-disabled:  #A3A3A3;
+  --fg-invert:    #FFFFFF;
+
+  /* Border */
+  --border:        #A3A3A3;
+  --border-strong: #000000;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg-card: var(--bg-card);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-invert: var(--bg-invert);
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-fg-mute: var(--fg-mute);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-fg-invert: var(--fg-invert);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --font-sans: 'Pretendard', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  background: #FFFFFF;
+  color: #000000;
+}
+
+html {
+  font-size: 18px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Pretendard', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'ss06', 'tnum';
+  word-break: keep-all;
+  font-size: 1rem;
+}
+
+/* 글자 크기 확대 - 작은 px 명시값들을 강제로 키움 */
+.text-\[9px\]   { font-size: 12px !important; }
+.text-\[10px\]  { font-size: 13px !important; }
+.text-\[11px\]  { font-size: 14px !important; }
+.text-\[12px\]  { font-size: 15px !important; }
+.text-\[13px\]  { font-size: 16px !important; }
+.text-\[14px\]  { font-size: 17px !important; }
+.text-\[15px\]  { font-size: 18px !important; }
+.text-\[48px\]  { font-size: 56px !important; }
+.text-\[56px\]  { font-size: 64px !important; }
+.text-\[120px\] { font-size: 140px !important; }
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Card 공통 스타일 */
+.card {
+  border: 2px solid #A3A3A3;
+  background: #FFFFFF;
+  transition: border-color 150ms ease;
+}
+.card:hover {
+  border-color: #000000;
+}
+.card-invert {
+  background: #000000;
+  color: #FFFFFF;
+  border: 1.5px solid #000000;
+}
+
+/* Mono Label */
+.label-mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: #737373;
 }
