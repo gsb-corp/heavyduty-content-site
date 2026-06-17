@@ -333,6 +333,7 @@ export interface PostseasonLog {
   id: string;
   category_id: string;
   week_monday: string; // "2026-08-17"
+  stage_type: StageType; // 발주/배송/케어/제작/발행
   note?: string | null;
 }
 
@@ -342,20 +343,21 @@ export async function fetchPostseasonLogs(): Promise<PostseasonLog[]> {
   return (data || []) as PostseasonLog[];
 }
 
-/** 포시즌 발행 체크 토글 — 있으면 삭제, 없으면 추가 */
-export async function togglePostseasonLog(categoryId: string, weekMonday: string) {
+/** 포시즌 단계 체크 토글 — (카테고리·주·단계) 있으면 삭제, 없으면 추가 */
+export async function togglePostseasonLog(categoryId: string, weekMonday: string, stageType: StageType) {
   const { data: existing } = await supabase
     .from('postseason_logs')
     .select('id')
     .eq('category_id', categoryId)
     .eq('week_monday', weekMonday)
+    .eq('stage_type', stageType)
     .maybeSingle();
   if (existing) {
     const { error } = await supabase.from('postseason_logs').delete().eq('id', existing.id);
     if (error) throw error;
     return false; // 해제됨
   } else {
-    const { error } = await supabase.from('postseason_logs').insert({ category_id: categoryId, week_monday: weekMonday });
+    const { error } = await supabase.from('postseason_logs').insert({ category_id: categoryId, week_monday: weekMonday, stage_type: stageType });
     if (error) throw error;
     return true; // 체크됨
   }

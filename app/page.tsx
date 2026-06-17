@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Category, Assignee, CategoryStage, TaskStatus, StageType } from '@/lib/data/types';
-import { TRACK_LABEL } from '@/lib/data/types';
+import { TRACK_LABEL, STAGE_DEFS } from '@/lib/data/types';
 import { fetchCategories, fetchAssignees, fetchAllCategoryStages, updateCategoryStage, fetchPostseasonLogs, togglePostseasonLog, fetchContentTasks, updateContentTask, type PostseasonLog, type ContentTask } from '@/lib/utils/queries';
 import {
   buildAllStageViews,
@@ -69,6 +69,8 @@ export default function Dashboard() {
   const [view, setView] = useState<'grid' | 'radar'>('grid');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [contentTasks, setContentTasks] = useState<ContentTask[]>([]);
+  // 포시즌 칸 클릭 시 뜨는 단계 선택 팝업 (어느 칸인지 + 화면 좌표)
+  const [postPicker, setPostPicker] = useState<{ catId: string; iso: string; x: number; y: number } | null>(null);
 
   // 카테고리 펼칠 때 그 카테고리의 콘텐츠 작업 로드
   async function openCategory(id: string | null) {
@@ -104,14 +106,14 @@ export default function Dashboard() {
     }
   }
 
-  async function togglePost(categoryId: string, weekMondayISO: string) {
+  async function togglePost(categoryId: string, weekMondayISO: string, stageType: StageType) {
     // optimistic
     setPostLogs((prev) => {
-      const exists = prev.find((l) => l.category_id === categoryId && l.week_monday === weekMondayISO);
+      const exists = prev.find((l) => l.category_id === categoryId && l.week_monday === weekMondayISO && l.stage_type === stageType);
       if (exists) return prev.filter((l) => l !== exists);
-      return [...prev, { id: 'tmp', category_id: categoryId, week_monday: weekMondayISO }];
+      return [...prev, { id: 'tmp', category_id: categoryId, week_monday: weekMondayISO, stage_type: stageType }];
     });
-    try { await togglePostseasonLog(categoryId, weekMondayISO); }
+    try { await togglePostseasonLog(categoryId, weekMondayISO, stageType); }
     catch (e: any) { alert('저장 실패: ' + e.message); loadAll(); }
   }
   useEffect(() => { setToday(new Date()); loadAll(); }, []);
@@ -198,12 +200,50 @@ export default function Dashboard() {
             setExpanded={openCategory}
             assigneeName={assigneeName}
             onToggle={toggleStatus}
-            onTogglePost={togglePost}
+            onOpenPostPicker={(catId, iso, x, y) => setPostPicker({ catId, iso, x, y })}
             onChangeContent={changeContentTask}
           />
         ) : (
           <RadarView grouped={grouped} assigneeName={assigneeName} onToggle={toggleStatus} />
         )}
+
+        {/* 포시즌 단계 선택 팝업 */}
+        {postPicker && (() => {
+          const cat = categories.find((c) => c.id === postPicker.catId);
+          const wkDate = (() => { const [y, m, d] = postPicker.iso.split('-').map(Number); return new Date(y, m - 1, d); })();
+          const checked = (st: StageType) => postLogs.some((l) => l.category_id === postPicker.catId && l.week_monday === postPicker.iso && l.stage_type === st);
+          const left = Math.min(postPicker.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 320);
+          const top = postPicker.y + 10;
+          return (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setPostPicker(null)} />
+              <div className="fixed z-50 bg-white p-3" style={{ left, top, border: STRONG_BORDER, boxShadow: '0 6px 24px rgba(0,0,0,0.18)' }}>
+                <div className="font-mono text-[10px] text-[#737373] mb-2 tracking-wide flex items-center justify-between gap-4">
+                  <span><b className="text-black">{cat?.name}</b> · {wkDate.getMonth() + 1}/{wkDate.getDate()} 주</span>
+                  <button onClick={() => setPostPicker(null)} className="text-[#737373] hover:text-black">✕</button>
+                </div>
+                <div className="flex gap-1.5">
+                  {STAGE_DEFS.map((def) => {
+                    const on = checked(def.type);
+                    return (
+                      <button
+                        key={def.type}
+                        onClick={() => togglePost(postPicker.catId, postPicker.iso, def.type)}
+                        className="flex flex-col items-center px-2.5 py-2 transition-colors"
+                        style={{ border: on ? '2px solid #1A7F37' : '1.5px solid #D4D4D4', background: on ? '#E8F3EC' : '#FFF', minWidth: 48 }}
+                        title={def.label}
+                      >
+                        <span className="text-[18px] leading-none">{STAGE_ICON[def.type]}</span>
+                        <span className="text-[10px] mt-1 font-bold" style={{ color: on ? '#1A7F37' : '#404040' }}>{def.short}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="font-mono text-[9px] text-[#A3A3A3] mt-2 tracking-wide">눌러서 켜고 끄기 · 여러 개 선택 가능</div>
+              </div>
+            </>
+          );
+        })()}
 
         {/* 포시즌 풀 */}
         <section className="mb-12 mt-10">
@@ -234,7 +274,7 @@ export default function Dashboard() {
 // 그리드 뷰 — 가로 주차 × 세로 카테고리
 // ============================================================
 function GridView({
-  seasonCats, postCats, stages, postLogs, assignees, contentTasks, today, expanded, setExpanded, assigneeName, onToggle, onTogglePost, onChangeContent,
+  seasonCats, postCats, stages, postLogs, assignees, contentTasks, today, expanded, setExpanded, assigneeName, onToggle, onOpenPostPicker, onChangeContent,
 }: {
   seasonCats: Category[];
   postCats: Category[];
@@ -247,7 +287,7 @@ function GridView({
   setExpanded: (id: string | null) => void;
   assigneeName: (id: string | null) => string | null;
   onToggle: (v: StageView) => void;
-  onTogglePost: (categoryId: string, weekMondayISO: string) => void;
+  onOpenPostPicker: (categoryId: string, weekMondayISO: string, x: number, y: number) => void;
   onChangeContent: (categoryId: string, day: string, patch: { assignee_id?: string | null; done?: boolean }) => void;
 }) {
   // 카테고리별 단계 뷰 미리 계산
@@ -436,11 +476,11 @@ function GridView({
           );
         })}
 
-        {/* ── 포시즌 행 (청바지·모자·폴로) — 칸 클릭으로 발행 체크 ── */}
+        {/* ── 포시즌 행 (청바지·모자·폴로) — 칸 클릭으로 단계 선택 ── */}
         {postCats.length > 0 && (
           <div className="flex" style={{ borderTop: '3px solid #000', background: '#EEE' }}>
             <div className="shrink-0 px-3 py-1.5 font-mono text-[9px] tracking-widest uppercase text-[#737373] font-bold" style={{ width: CAT_W, position: 'sticky', left: 0, background: '#EEE', borderRight: '2px solid #000', zIndex: 1 }}>
-              포시즌 (칸 클릭 = 발행)
+              포시즌 (칸 클릭 = 단계 선택)
             </div>
             <div style={{ flex: 1 }} />
           </div>
@@ -448,7 +488,13 @@ function GridView({
         {postCats.map((cat, pi) => {
           const cc = catColor(seasonCats.length + pi);
           const rowBg = `${cc}10`;
-          const logSet = new Set(postLogs.filter((l) => l.category_id === cat.id).map((l) => l.week_monday));
+          // 주(iso) → 체크된 단계 집합 (STAGE_DEFS 순서대로 정렬)
+          const stagesByWeek: Record<string, StageType[]> = {};
+          for (const l of postLogs) {
+            if (l.category_id !== cat.id) continue;
+            (stagesByWeek[l.week_monday] ||= []).push(l.stage_type);
+          }
+          const orderIdx = (st: StageType) => STAGE_DEFS.findIndex((d) => d.type === st);
           return (
             <div key={cat.id} className="flex items-stretch" style={{ borderBottom: '1px solid #D4D4D4' }}>
               <div className="shrink-0 pr-3 py-2.5 text-left flex flex-col justify-center" style={{ width: CAT_W, position: 'sticky', left: 0, background: '#FFF', borderRight: '2px solid #000', borderLeft: `7px solid ${cc}`, paddingLeft: 10, zIndex: 1 }}>
@@ -457,19 +503,22 @@ function GridView({
               </div>
               {weeks.map((w, i) => {
                 const iso = `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`;
-                const checked = logSet.has(iso);
+                const cellStages = (stagesByWeek[iso] || []).slice().sort((a, b) => orderIdx(a) - orderIdx(b));
+                const has = cellStages.length > 0;
                 const isToday = i === todayWeekIdx;
                 const monthStart = monthGroups.find((g) => g.startIdx === i);
                 const leftBorder = monthStart && i > 0 ? '2px solid #000' : '1px solid #EDEDED';
                 return (
                   <button
                     key={i}
-                    onClick={() => onTogglePost(cat.id, iso)}
-                    title={`${cat.name} · ${w.getMonth() + 1}/${w.getDate()} 주 · 클릭=발행 체크`}
-                    className="flex items-center justify-center py-2 transition-opacity hover:opacity-70"
-                    style={{ flex: 1, minWidth: MIN_COL, borderLeft: leftBorder, background: checked ? '#1A7F37' : (isToday ? '#FBE9E7' : rowBg), color: '#FFF' }}
+                    onClick={(e) => onOpenPostPicker(cat.id, iso, e.clientX, e.clientY)}
+                    title={`${cat.name} · ${w.getMonth() + 1}/${w.getDate()} 주${has ? ' · ' + cellStages.map((s) => STAGE_SHORT[s]).join(',') : ''} · 클릭=단계 선택`}
+                    className="flex flex-wrap items-center justify-center py-2 px-0.5 gap-0.5 transition-opacity hover:opacity-70"
+                    style={{ flex: 1, minWidth: MIN_COL, borderLeft: leftBorder, background: has ? '#E8F3EC' : (isToday ? '#FBE9E7' : rowBg) }}
                   >
-                    {checked ? <span className="text-[15px] leading-none">📣</span> : <span className="text-[#D4D4D4] text-[13px] leading-none">+</span>}
+                    {has
+                      ? cellStages.map((s) => <span key={s} className="text-[13px] leading-none">{STAGE_ICON[s]}</span>)
+                      : <span className="text-[#C8C8C8] text-[13px] leading-none">+</span>}
                   </button>
                 );
               })}
