@@ -117,10 +117,10 @@ export function groupByUrgency(views: StageView[]) {
   };
 }
 
-/** 날짜 → "M/D (월 N주차)" 라벨 */
+/** 날짜 → "M/D (월 N주차)" 라벨 (1~5주) */
 export function formatDeadline(d: Date): string {
   const day = d.getDate();
-  const w = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+  const w = Math.floor((day - 1) / 7) + 1;
   return `${d.getMonth() + 1}/${day} (${d.getMonth() + 1}월 ${w}주차)`;
 }
 
@@ -168,10 +168,9 @@ export function mondayLabel(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/** 날짜 → 그 달의 N주차 (1-7=1, 8-14=2, 15-21=3, 22~=4) */
+/** 날짜 → 그 달의 N주차 (1-5). 1-7=1 … 29-31=5. 주의 목요일 기준으로 호출되어 한국 달력과 일치 */
 export function weekOfMonth(d: Date): number {
-  const day = d.getDate();
-  return day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+  return Math.floor((d.getDate() - 1) / 7) + 1;
 }
 
 /** 주차 컬럼 → "N주차" (주의 목요일 기준 월 판정, 월 넘어가는 주 처리) */
