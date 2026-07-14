@@ -44,6 +44,9 @@ export default function InventoryPage() {
   const [selling, setSelling] = useState<Item | null>(null);
   const [sellPrice, setSellPrice] = useState('');
   const [sellDate, setSellDate] = useState('');
+  const [noCostOnly, setNoCostOnly] = useState(false);      // 원가없는 판매만 보기 (노란 배너 클릭)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCollapse = (id: string) => setCollapsed((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   async function loadAll() {
     setLoading(true);
@@ -80,12 +83,13 @@ export default function InventoryPage() {
   const filtered = useMemo(() => {
     const qq = q.trim().toUpperCase();
     return items.filter((i) => {
+      if (noCostOnly && !(i.status === 'sold' && i.unit_cost == null)) return false;
       if (statusFilter !== 'all' && i.status !== statusFilter) return false;
       if (batchFilter && i.batch_id !== batchFilter) return false;
       if (qq && !(i.code.includes(qq) || (i.name_en || '').toUpperCase().includes(qq) || (i.name_kr || '').toUpperCase().includes(qq))) return false;
       return true;
     });
-  }, [items, q, statusFilter, batchFilter]);
+  }, [items, q, statusFilter, batchFilter, noCostOnly]);
 
   const flagged = useMemo(() => items.filter((i) => i.note), [items]);
 
@@ -154,72 +158,111 @@ export default function InventoryPage() {
 
         {/* 원가 없는 판매 — 매출엔 잡히지만 원가 미연결이라 마진에서 제외 */}
         {stats.noCostN > 0 && (
-          <div className="mb-8 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1" style={{ border: '2px solid #D4A017', background: '#FFFBF0' }}>
+          <button
+            onClick={() => { const on = !noCostOnly; setNoCostOnly(on); setTab('list'); if (on) { setStatusFilter('all'); setBatchFilter(''); setQ(''); } }}
+            className="w-full text-left mb-8 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 hover:opacity-90 transition-opacity"
+            style={{ border: noCostOnly ? '2px solid #B45309' : '2px solid #D4A017', background: noCostOnly ? '#FFF1D6' : '#FFFBF0' }}
+          >
             <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold text-[#B45309]">⚠ 원가 없는 판매</span>
-            <span className="text-sm"><b>{stats.noCostN}점</b> · 매출 <b>{won(stats.revenueNC)}원</b> (판매는 확정, 원가 미연결이라 위 마진엔 미포함)</span>
-            <span className="font-mono text-[10px] text-[#737373]">→ 원가 붙이면 마진에 자동 반영</span>
-          </div>
+            <span className="text-sm"><b>{stats.noCostN}점</b> · 매출 <b>{won(stats.revenueNC)}원</b> — 판매는 확정, 원가 미연결이라 위 마진엔 미포함</span>
+            <span className="font-mono text-[10px] text-[#B45309] font-bold ml-auto">{noCostOnly ? '✕ 전체 보기로' : '👉 이 51건만 보기'}</span>
+          </button>
         )}
 
-        {tab === 'list' && (
-          <>
-            <div className="flex flex-wrap gap-2 mb-4 items-center">
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="품번·제품명 검색" className="px-3 py-2 text-sm font-mono flex-1 min-w-[180px]" style={{ border: STRONG_BORDER }} />
-              <div className="flex" style={{ border: STRONG_BORDER }}>
-                {([['all', '전체'], ['listed', '재고'], ['sold', '판매']] as const).map(([v, l], i) => (
-                  <button key={v} onClick={() => setStatusFilter(v)} className={`px-3 py-2 font-mono text-[10px] tracking-widest uppercase font-bold ${statusFilter === v ? 'bg-black text-white' : 'bg-white'}`} style={{ borderLeft: i > 0 ? '2px solid #000' : 'none' }}>{l}</button>
-                ))}
+        {tab === 'list' && (() => {
+          // 배치별 그룹 (배치 순서대로, 미배정은 마지막)
+          const byBatch = new Map<string, Item[]>();
+          for (const it of filtered) {
+            const k = it.batch_id || '__none__';
+            if (!byBatch.has(k)) byBatch.set(k, []);
+            byBatch.get(k)!.push(it);
+          }
+          const groups: { id: string; label: string; items: Item[] }[] = [];
+          for (const b of batches) if (byBatch.has(b.id)) groups.push({ id: b.id, label: b.label, items: byBatch.get(b.id)! });
+          if (byBatch.has('__none__')) groups.push({ id: '__none__', label: '개별 · 배대지/수기 (원가 미연결 포함)', items: byBatch.get('__none__')! });
+
+          const ItemRow = (it: Item) => {
+            const sc = STATUS_COLOR[it.status] || STATUS_COLOR.listed;
+            const margin = it.status === 'sold' && it.sold_price != null && it.unit_cost != null ? it.sold_price - it.unit_cost : null;
+            return (
+              <tr key={it.id} style={{ borderBottom: '1px solid #EDEDED' }}>
+                <td className="px-3 py-2 font-mono font-bold text-xs whitespace-nowrap">{it.code}{it.note && <span title={it.note}> ⚠️</span>}</td>
+                <td className="px-2 py-2 hidden md:table-cell text-xs text-[#404040]">{it.name_kr || it.name_en || <span className="text-[#BBB]">—</span>}</td>
+                <td className="px-2 py-2 text-right font-mono tabular text-xs">{won(it.unit_cost)}</td>
+                <td className="px-2 py-2 text-right font-mono tabular text-xs hidden sm:table-cell">{won(it.list_price)}</td>
+                <td className="px-2 py-2 text-right font-mono tabular text-xs font-bold">
+                  {won(it.sold_price)}
+                  {margin != null && <div className={`text-[9px] ${margin >= 0 ? 'text-[#1A7F37]' : 'text-[#C0392B]'}`}>{margin >= 0 ? '+' : ''}{won(margin)}</div>}
+                </td>
+                <td className="px-2 py-2 text-center font-mono tabular text-[11px] text-[#555] whitespace-nowrap hidden sm:table-cell">{it.sold_date ? it.sold_date.slice(2).replace(/-/g, '.') : '—'}</td>
+                <td className="px-2 py-2 text-center"><span className="font-mono text-[9px] px-1.5 py-0.5 font-bold" style={{ background: sc.bg, color: sc.fg, border: '1px solid #000' }}>{STATUS_LABEL[it.status] || it.status}</span></td>
+                <td className="px-2 py-2 text-center whitespace-nowrap">
+                  {it.status === 'listed'
+                    ? <button onClick={() => openSell(it)} className="font-mono text-[10px] px-2 py-1 font-bold bg-black text-white hover:opacity-75">판매</button>
+                    : it.status === 'sold'
+                    ? <button onClick={() => undoSell(it)} className="font-mono text-[10px] px-2 py-1 hover:bg-[#F5F5F5]" style={{ border: '1.5px solid #A3A3A3' }}>취소</button>
+                    : null}
+                </td>
+              </tr>
+            );
+          };
+
+          return (
+            <>
+              <div className="flex flex-wrap gap-2 mb-4 items-center">
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="품번·제품명 검색" className="px-3 py-2 text-sm font-mono flex-1 min-w-[180px]" style={{ border: STRONG_BORDER }} />
+                <div className="flex" style={{ border: STRONG_BORDER }}>
+                  {([['all', '전체'], ['listed', '재고'], ['sold', '판매']] as const).map(([v, l], i) => (
+                    <button key={v} onClick={() => setStatusFilter(v)} className={`px-3 py-2 font-mono text-[10px] tracking-widest uppercase font-bold ${statusFilter === v ? 'bg-black text-white' : 'bg-white'}`} style={{ borderLeft: i > 0 ? '2px solid #000' : 'none' }}>{l}</button>
+                  ))}
+                </div>
+                <select value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)} className="px-2 py-2 text-xs font-mono bg-white" style={{ border: STRONG_BORDER, maxWidth: 220 }}>
+                  <option value="">모든 배치</option>
+                  {batches.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+                </select>
+                <span className="font-mono text-xs text-[#737373] tabular">{filtered.length}점</span>
+                <button onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(groups.map((g) => g.id)))} className="font-mono text-[10px] px-2 py-2 tracking-widest uppercase hover:bg-[#F5F5F5]" style={{ border: STRONG_BORDER }}>
+                  {collapsed.size ? '모두 펼치기' : '모두 접기'}
+                </button>
               </div>
-              <select value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)} className="px-2 py-2 text-xs font-mono bg-white" style={{ border: STRONG_BORDER, maxWidth: 220 }}>
-                <option value="">모든 배치</option>
-                {batches.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-              </select>
-              <span className="font-mono text-xs text-[#737373] tabular">{filtered.length}점</span>
-            </div>
-            <div className="overflow-x-auto" style={{ border: STRONG_BORDER }}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="font-mono text-[9px] tracking-[0.1em] uppercase text-[#737373]" style={{ borderBottom: STRONG_BORDER, background: '#F5F5F5' }}>
-                    <th className="text-left px-3 py-2">품번</th>
-                    <th className="text-left px-2 py-2 hidden md:table-cell">제품명</th>
-                    <th className="text-right px-2 py-2">원가</th>
-                    <th className="text-right px-2 py-2 hidden sm:table-cell">책정가</th>
-                    <th className="text-right px-2 py-2">실판매</th>
-                    <th className="text-center px-2 py-2">상태</th>
-                    <th className="text-center px-2 py-2">처리</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.slice(0, 400).map((it) => {
-                    const sc = STATUS_COLOR[it.status] || STATUS_COLOR.listed;
-                    const margin = it.status === 'sold' && it.sold_price != null && it.unit_cost != null ? it.sold_price - it.unit_cost : null;
-                    return (
-                      <tr key={it.id} style={{ borderBottom: '1px solid #E5E5E5' }}>
-                        <td className="px-3 py-2 font-mono font-bold text-xs whitespace-nowrap">{it.code}{it.note && <span title={it.note}> ⚠️</span>}</td>
-                        <td className="px-2 py-2 hidden md:table-cell text-xs text-[#404040]">{it.name_kr || it.name_en || <span className="text-[#BBB]">—</span>}</td>
-                        <td className="px-2 py-2 text-right font-mono tabular text-xs">{won(it.unit_cost)}</td>
-                        <td className="px-2 py-2 text-right font-mono tabular text-xs hidden sm:table-cell">{won(it.list_price)}</td>
-                        <td className="px-2 py-2 text-right font-mono tabular text-xs font-bold">
-                          {won(it.sold_price)}
-                          {margin != null && <div className={`text-[9px] ${margin >= 0 ? 'text-[#1A7F37]' : 'text-[#C0392B]'}`}>{margin >= 0 ? '+' : ''}{won(margin)}</div>}
-                        </td>
-                        <td className="px-2 py-2 text-center"><span className="font-mono text-[9px] px-1.5 py-0.5 font-bold" style={{ background: sc.bg, color: sc.fg, border: '1px solid #000' }}>{STATUS_LABEL[it.status] || it.status}</span></td>
-                        <td className="px-2 py-2 text-center whitespace-nowrap">
-                          {it.status === 'listed'
-                            ? <button onClick={() => openSell(it)} className="font-mono text-[10px] px-2 py-1 font-bold bg-black text-white hover:opacity-75">판매</button>
-                            : it.status === 'sold'
-                            ? <button onClick={() => undoSell(it)} className="font-mono text-[10px] px-2 py-1 hover:bg-[#F5F5F5]" style={{ border: '1.5px solid #A3A3A3' }}>취소</button>
-                            : null}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filtered.length > 400 && <p className="p-3 text-xs text-[#737373] font-mono">…{filtered.length - 400}점 더 있음 — 검색·필터로 좁혀보세요</p>}
-            </div>
-          </>
-        )}
+
+              {noCostOnly && <p className="mb-3 text-xs font-mono text-[#B45309]">⚠ 원가 없는 판매 {filtered.length}건만 보는 중 — 노란 배너 다시 누르면 전체로</p>}
+
+              {groups.map((g) => {
+                const isCol = collapsed.has(g.id);
+                const soldN = g.items.filter((i) => i.status === 'sold').length;
+                return (
+                  <div key={g.id} className="mb-3" style={{ border: STRONG_BORDER }}>
+                    <button onClick={() => toggleCollapse(g.id)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#EAEAEA]" style={{ background: '#F0F0F0', borderBottom: isCol ? 'none' : STRONG_BORDER }}>
+                      <span className="font-bold text-sm">{isCol ? '▸' : '▾'} {g.label}</span>
+                      <span className="font-mono text-[10px] text-[#737373] tabular">{g.items.length}점 · 판매 {soldN} / 재고 {g.items.length - soldN}</span>
+                    </button>
+                    {!isCol && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="font-mono text-[9px] tracking-[0.1em] uppercase text-[#737373]" style={{ borderBottom: '1.5px solid #A3A3A3', background: '#FAFAFA' }}>
+                              <th className="text-left px-3 py-1.5">품번</th>
+                              <th className="text-left px-2 py-1.5 hidden md:table-cell">제품명</th>
+                              <th className="text-right px-2 py-1.5">원가</th>
+                              <th className="text-right px-2 py-1.5 hidden sm:table-cell">책정가</th>
+                              <th className="text-right px-2 py-1.5">실판매</th>
+                              <th className="text-center px-2 py-1.5 hidden sm:table-cell">판매일</th>
+                              <th className="text-center px-2 py-1.5">상태</th>
+                              <th className="text-center px-2 py-1.5">처리</th>
+                            </tr>
+                          </thead>
+                          <tbody>{g.items.map(ItemRow)}</tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {groups.length === 0 && <p className="p-6 text-center text-sm text-[#737373]">해당하는 아이템이 없습니다.</p>}
+            </>
+          );
+        })()}
 
         {tab === 'batches' && (
           <div className="overflow-x-auto" style={{ border: STRONG_BORDER }}>
