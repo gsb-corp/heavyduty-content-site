@@ -60,11 +60,21 @@ export default function InventoryPage() {
   const stats = useMemo(() => {
     const stock = items.filter((i) => i.status === 'listed');
     const sold = items.filter((i) => i.status === 'sold');
-    const revenue = sold.reduce((s, i) => s + (i.sold_price || 0), 0);
-    const soldCost = sold.reduce((s, i) => s + (i.unit_cost || 0), 0);
+    // 원가 연결된 판매만 마진 계산 (원가 없는 판매는 별도 집계)
+    const soldWithCost = sold.filter((i) => i.unit_cost != null);
+    const soldNoCost = sold.filter((i) => i.unit_cost == null);
+    const revenue = sold.reduce((s, i) => s + (i.sold_price || 0), 0);            // 전체 매출 (원가 유무 무관)
+    const revenueWC = soldWithCost.reduce((s, i) => s + (i.sold_price || 0), 0);   // 원가연결 판매 매출
+    const soldCost = soldWithCost.reduce((s, i) => s + (i.unit_cost || 0), 0);     // 원가연결 판매 원가
+    const revenueNC = soldNoCost.reduce((s, i) => s + (i.sold_price || 0), 0);     // 원가없는 판매 매출
     const stockCost = stock.reduce((s, i) => s + (i.unit_cost || 0), 0);
     const totalCost = batches.reduce((s, b) => s + (b.cost_total || 0), 0);
-    return { stockN: stock.length, soldN: sold.length, revenue, soldCost, stockCost, totalCost, margin: revenue - soldCost };
+    return {
+      stockN: stock.length, soldN: sold.length,
+      revenue, stockCost, totalCost,
+      marginN: soldWithCost.length, margin: revenueWC - soldCost, soldCost,
+      noCostN: soldNoCost.length, revenueNC,
+    };
   }, [items, batches]);
 
   const filtered = useMemo(() => {
@@ -127,11 +137,11 @@ export default function InventoryPage() {
         </header>
 
         {/* 손익 요약 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           {[
             { k: '재고', v: `${stats.stockN}점`, s: `원가 ${won(stats.stockCost)}원` },
-            { k: '판매', v: `${stats.soldN}점`, s: `매출 ${won(stats.revenue)}원` },
-            { k: '판매 마진', v: `${won(stats.margin)}원`, s: `판매분 원가 ${won(stats.soldCost)}원` },
+            { k: '판매 (전체)', v: `${stats.soldN}점`, s: `매출 ${won(stats.revenue)}원` },
+            { k: '판매 마진 (원가확인분)', v: `${won(stats.margin)}원`, s: `${stats.marginN}점 · 원가 ${won(stats.soldCost)}원` },
             { k: '총 사입원가', v: `${won(stats.totalCost)}원`, s: `회수율 ${stats.totalCost ? Math.round((stats.revenue / stats.totalCost) * 100) : 0}%` },
           ].map((c) => (
             <div key={c.k} className="p-4" style={{ border: STRONG_BORDER }}>
@@ -141,6 +151,15 @@ export default function InventoryPage() {
             </div>
           ))}
         </div>
+
+        {/* 원가 없는 판매 — 매출엔 잡히지만 원가 미연결이라 마진에서 제외 */}
+        {stats.noCostN > 0 && (
+          <div className="mb-8 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1" style={{ border: '2px solid #D4A017', background: '#FFFBF0' }}>
+            <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold text-[#B45309]">⚠ 원가 없는 판매</span>
+            <span className="text-sm"><b>{stats.noCostN}점</b> · 매출 <b>{won(stats.revenueNC)}원</b> (판매는 확정, 원가 미연결이라 위 마진엔 미포함)</span>
+            <span className="font-mono text-[10px] text-[#737373]">→ 원가 붙이면 마진에 자동 반영</span>
+          </div>
+        )}
 
         {tab === 'list' && (
           <>
