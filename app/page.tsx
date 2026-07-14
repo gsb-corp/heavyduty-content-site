@@ -183,6 +183,7 @@ export default function Dashboard() {
               <button onClick={() => setView('grid')} className={`px-3 py-1.5 font-mono text-[10px] tracking-widest uppercase font-bold ${view === 'grid' ? 'bg-black text-white' : 'bg-white text-black'}`}>📅 시간표</button>
               <button onClick={() => setView('radar')} className={`px-3 py-1.5 font-mono text-[10px] tracking-widest uppercase font-bold ${view === 'radar' ? 'bg-black text-white' : 'bg-white text-black'}`} style={{ borderLeft: '2px solid #000' }}>🔴 급한 것</button>
             </div>
+            <Link href="/inventory" className="font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-1.5 border-2 border-black hover:bg-black hover:text-white transition-colors">📦 재고</Link>
             <Link href="/admin" className="font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-1.5 border-2 border-black hover:bg-black hover:text-white transition-colors">관리자</Link>
           </div>
         </div>
