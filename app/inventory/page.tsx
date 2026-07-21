@@ -32,6 +32,24 @@ const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
 };
 const won = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('ko-KR'));
 
+// 카테고리 — 스키마엔 없어서 제품명(영/한)으로 추론, 이름 없으면 배치명으로. 표시용 그룹핑.
+const CATEGORY_ORDER = ['셔츠', '스웻·니트', '아우터', '데님', '바지', '모자·가방', '벨트', '기타'];
+function catFromText(s: string): string | null {
+  const has = (...ks: string[]) => ks.some((k) => s.includes(k));
+  if (has('levi', '501', '505', '550', 'jean', 'denim', 'orange tab', 'white tab', '리바이스', '청바지', '데님')) return '데님';
+  if (has('sweatshirt', 'sweater', 'reverse weave', 'quarter zip', 'pullover', 'crewneck', 'knit', 'hoodie', '스웻', '스웨트', '스웨터', '니트', '맨투맨', '후드', '후디', '기모')) return '스웻·니트';
+  if (has('jacket', 'vest', 'coat', 'parka', 'windbreaker', 'bomber', 'goretex', 'gore-tex', 'anorak', 'field coat', 'puffer', 'blazer', 'fleece', 'down ', '자켓', '재킷', '코트', '조끼', '베스트', '패딩', '점퍼', '바람막이', '코치', '플리스', '후리스')) return '아우터';
+  if (has('shirt', 'button down', 'button-down', 'flannel', 'ocbd', 'oxford', 'western', 'pearl snap', 'tattersall', 'windowpane', 'plaid', 'tartan', 'check', 'madras', 'polo', 'rugby', '셔츠', '남방')) return '셔츠';
+  if (has('pants', 'shorts', 'trouser', 'chino', 'cargo', 'carpenter', '바지', '팬츠', '치노', '카고', '반바지', '슬랙스', '쇼츠')) return '바지';
+  if (has('cap', 'hat', 'beanie', 'tote', 'bag', 'scarf', 'backpack', '모자', '캡', '비니', '볼캡', '가방', '토트', '스카프', '백팩')) return '모자·가방';
+  if (has('belt', '벨트')) return '벨트';
+  return null;
+}
+function categoryOf(it: Item, batchLabel?: string): string {
+  const name = `${it.name_en || ''} ${it.name_kr || ''}`.toLowerCase();
+  return catFromText(name) || (batchLabel ? catFromText(batchLabel.toLowerCase()) : null) || '기타';
+}
+
 export default function InventoryPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -41,6 +59,7 @@ export default function InventoryPage() {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'listed' | 'sold'>('all');
   const [batchFilter, setBatchFilter] = useState<string>('');
+  const [groupMode, setGroupMode] = useState<'category' | 'batch'>('category');
   const [selling, setSelling] = useState<Item | null>(null);
   const [sellPrice, setSellPrice] = useState('');
   const [sellDate, setSellDate] = useState('');
@@ -170,16 +189,27 @@ export default function InventoryPage() {
         )}
 
         {tab === 'list' && (() => {
-          // 배치별 그룹 (배치 순서대로, 미배정은 마지막)
-          const byBatch = new Map<string, Item[]>();
-          for (const it of filtered) {
-            const k = it.batch_id || '__none__';
-            if (!byBatch.has(k)) byBatch.set(k, []);
-            byBatch.get(k)!.push(it);
-          }
+          // 그룹핑 — 카테고리별(기본) 또는 사입배치별
           const groups: { id: string; label: string; items: Item[] }[] = [];
-          for (const b of batches) if (byBatch.has(b.id)) groups.push({ id: b.id, label: b.label, items: byBatch.get(b.id)! });
-          if (byBatch.has('__none__')) groups.push({ id: '__none__', label: '개별 · 배대지/수기 (원가 미연결 포함)', items: byBatch.get('__none__')! });
+          if (groupMode === 'category') {
+            const batchLabel = new Map(batches.map((b) => [b.id, b.label]));
+            const byCat = new Map<string, Item[]>();
+            for (const it of filtered) {
+              const k = categoryOf(it, it.batch_id ? batchLabel.get(it.batch_id) : undefined);
+              if (!byCat.has(k)) byCat.set(k, []);
+              byCat.get(k)!.push(it);
+            }
+            for (const c of CATEGORY_ORDER) if (byCat.has(c)) groups.push({ id: c, label: c, items: byCat.get(c)! });
+          } else {
+            const byBatch = new Map<string, Item[]>();
+            for (const it of filtered) {
+              const k = it.batch_id || '__none__';
+              if (!byBatch.has(k)) byBatch.set(k, []);
+              byBatch.get(k)!.push(it);
+            }
+            for (const b of batches) if (byBatch.has(b.id)) groups.push({ id: b.id, label: b.label, items: byBatch.get(b.id)! });
+            if (byBatch.has('__none__')) groups.push({ id: '__none__', label: '개별 · 배대지/수기 (원가 미연결 포함)', items: byBatch.get('__none__')! });
+          }
 
           const ItemRow = (it: Item) => {
             const sc = STATUS_COLOR[it.status] || STATUS_COLOR.listed;
@@ -210,7 +240,13 @@ export default function InventoryPage() {
           return (
             <>
               <div className="flex flex-wrap gap-2 mb-4 items-center">
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="품번·제품명 검색" className="px-3 py-2 text-sm font-mono flex-1 min-w-[180px]" style={{ border: STRONG_BORDER }} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="품번·제품명 검색" className="px-3 py-2 text-sm font-mono flex-1 min-w-[160px]" style={{ border: STRONG_BORDER }} />
+                {/* 그룹핑: 카테고리 / 배치 */}
+                <div className="flex" style={{ border: STRONG_BORDER }}>
+                  {([['category', '카테고리'], ['batch', '배치']] as const).map(([v, l], i) => (
+                    <button key={v} onClick={() => setGroupMode(v)} className={`px-3 py-2 font-mono text-[10px] tracking-widest uppercase font-bold ${groupMode === v ? 'bg-black text-white' : 'bg-white'}`} style={{ borderLeft: i > 0 ? '2px solid #000' : 'none' }}>{l}</button>
+                  ))}
+                </div>
                 <div className="flex" style={{ border: STRONG_BORDER }}>
                   {([['all', '전체'], ['listed', '재고'], ['sold', '판매']] as const).map(([v, l], i) => (
                     <button key={v} onClick={() => setStatusFilter(v)} className={`px-3 py-2 font-mono text-[10px] tracking-widest uppercase font-bold ${statusFilter === v ? 'bg-black text-white' : 'bg-white'}`} style={{ borderLeft: i > 0 ? '2px solid #000' : 'none' }}>{l}</button>
@@ -231,11 +267,22 @@ export default function InventoryPage() {
               {groups.map((g) => {
                 const isCol = collapsed.has(g.id);
                 const soldN = g.items.filter((i) => i.status === 'sold').length;
+                const stockN = g.items.length - soldN;
+                const sellPct = g.items.length ? Math.round((soldN / g.items.length) * 100) : 0;
                 return (
                   <div key={g.id} className="mb-3" style={{ border: STRONG_BORDER }}>
-                    <button onClick={() => toggleCollapse(g.id)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#EAEAEA]" style={{ background: '#F0F0F0', borderBottom: isCol ? 'none' : STRONG_BORDER }}>
-                      <span className="font-bold text-sm">{isCol ? '▸' : '▾'} {g.label}</span>
-                      <span className="font-mono text-[10px] text-[#737373] tabular">{g.items.length}점 · 판매 {soldN} / 재고 {g.items.length - soldN}</span>
+                    <button onClick={() => toggleCollapse(g.id)} className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#EAEAEA]" style={{ background: '#F0F0F0', borderBottom: isCol ? 'none' : STRONG_BORDER }}>
+                      <span className="font-bold text-sm shrink-0">{isCol ? '▸' : '▾'} {g.label}</span>
+                      {/* 한눈에 현황 바 — 재고(검정) / 판매(초록) */}
+                      <span className="hidden sm:flex flex-1 h-[10px] max-w-[220px] overflow-hidden" style={{ border: '1.5px solid #000' }} title={`재고 ${stockN} / 판매 ${soldN}`}>
+                        <span style={{ width: `${100 - sellPct}%`, background: '#000' }} />
+                        <span style={{ width: `${sellPct}%`, background: '#1A7F37' }} />
+                      </span>
+                      <span className="font-mono text-[11px] tabular ml-auto shrink-0">
+                        <b className="text-black">재고 {stockN}</b>
+                        <span className="text-[#737373]"> / 판매 {soldN}</span>
+                        <span className="text-[#BBB]"> · {g.items.length}점</span>
+                      </span>
                     </button>
                     {!isCol && (
                       <div className="overflow-x-auto">
