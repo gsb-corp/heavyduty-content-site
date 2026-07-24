@@ -22,7 +22,7 @@ const CATEGORIES = [
   // ── 시즌 메인 9개 (정점 날짜 있음) ──
   { id: 'work-shirt',     name: '플란넬·체크셔츠',   subtitle: 'FLANNEL · CHECK', season: '가을', peak_date: '2026-09-03', track: 'season', sort: 1 },
   { id: 'mountain-parka', name: '마운틴파카 (60/40)', subtitle: 'MOUNTAIN PARKA',  season: '가을', peak_date: '2026-10-26', track: 'season', sort: 2 }, // 2026-07-16 정점 9/28→10/26 조정 (데이터랩 3년 평균 11월 4주 반영 절충)
-  { id: 'anorak-coach',   name: '바람막이+아노락',   subtitle: 'ANORAK · COACH',  season: '가을', peak_date: '2026-10-01', track: 'season', sort: 3 },
+  { id: 'anorak-coach',   name: '바람막이+아노락',   subtitle: 'ANORAK · COACH',  season: '가을', peak_date: '2026-10-12', track: 'season', sort: 3 }, // 2026-07-24 정점 10/1→10/12 순연 (발주 지연, 7/27 발주 기준)
   { id: 'denim-jacket',   name: '청자켓·데님자켓',   subtitle: 'DENIM JACKET',    season: '가을', peak_date: '2026-10-07', track: 'season', sort: 4 },
   { id: 'hunting-jacket', name: '필드·헌팅자켓',     subtitle: 'FIELD · HUNTING', season: '가을', peak_date: '2026-11-02', track: 'season', sort: 5 },
   { id: 'sweatshirt',     name: '맨투맨·후드티',     subtitle: 'SWEAT · HOODIE',  season: '가을', peak_date: '2026-10-26', track: 'season', sort: 6 },
