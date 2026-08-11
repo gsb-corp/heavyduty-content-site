@@ -46,8 +46,58 @@ function catFromText(s: string): string | null {
   return null;
 }
 function categoryOf(it: Item, batchLabel?: string): string {
+  // HD 품번은 품목코드가 정답 (SH=셔츠 / JK=아우터 / BT=바지 / SW=니트 / DE=데님)
+  const hd = /^HD\d+([A-Z]+)\d+$/.exec(it.code.toUpperCase());
+  if (hd) {
+    const byCode: Record<string, string> = { SH: '셔츠', JK: '아우터', BT: '바지', SW: '스웻·니트', SWS: '스웻·니트', DE: '데님' };
+    if (byCode[hd[1]]) return byCode[hd[1]];
+  }
+  // 구품번 접두어도 품목이 고정된 묶음이 있음
+  const c = it.code.toUpperCase();
+  if (/^TH2DE|^DB1DE/.test(c)) return '데님';
+  if (/^TH1SW|^DT1SW|^DT1HD/.test(c)) return '스웻·니트';
+  if (/^TH3FC/.test(c)) return '아우터';
+  if (/^SP1SCV|^BE1BC/.test(c)) return '모자·가방';
   const name = `${it.name_en || ''} ${it.name_kr || ''}`.toLowerCase();
   return catFromText(name) || (batchLabel ? catFromText(batchLabel.toLowerCase()) : null) || '기타';
+}
+
+// 브랜드 — 긴 이름 먼저 매칭(폴로 서브라인이 'Ralph Lauren'에 먹히지 않도록)
+const BRAND_RULES: [string, string][] = [
+  ['double rl', 'RRL'], ['rrl', 'RRL'],
+  ['polo country', 'Polo Country'], ['polo sport', 'Polo Sport'], ['polo golf', 'Polo Golf'],
+  ['rlx', 'RLX'], ['polo ralph lauren', 'Polo Ralph Lauren'], ['ralph lauren', 'Polo Ralph Lauren'],
+  ['l.l.bean', 'L.L.Bean'], ['l.l bean', 'L.L.Bean'], ['ll bean', 'L.L.Bean'], ['llbean', 'L.L.Bean'],
+  ['eddie bauer', 'Eddie Bauer'], ['wrancher', 'Wrangler'], ['wrangler', 'Wrangler'],
+  ['levi', "Levi's"], ['champion', 'Champion'], ['russell', 'Russell Athletic'],
+  ['patagonia', 'Patagonia'], ['columbia', 'Columbia'], ['carhartt', 'Carhartt'],
+  ['north face', 'The North Face'], ['nautica', 'Nautica'], ['pendleton', 'Pendleton'],
+  ['big mac', 'Big Mac'], ['dickies', 'Dickies'], ['tommy', 'Tommy Hilfiger'],
+  ['barbarian', 'Barbarian'], ['brooks brothers', 'Brooks Brothers'], ['woolrich', 'Woolrich'],
+  ['harley', 'Harley-Davidson'], ['john deere', 'John Deere'], ['peter millar', 'Peter Millar'],
+  ['old navy', 'Old Navy'], ['american eagle', 'American Eagle'], ['roper', 'Roper'],
+  ['seiko', 'Seiko'], ['gap', 'GAP'], ['nike', 'Nike'], ['a.p.c', 'A.P.C.'],
+  ['comme des', 'Comme des Garçons'], ['gloverall', 'Gloverall'], ['parajumpers', 'Parajumpers'],
+  ['freitag', 'FREITAG'], ['paul smith', 'Paul Smith'], ['ferragamo', 'Ferragamo'],
+  ['gaultier', 'Jean Paul Gaultier'], ['sierra', 'Sierra Designs'], ['mondetta', 'Mondetta'],
+  ['5.11', '5.11 Tactical'], ['warehouse', 'Warehouse & Co.'], ['lacoste', 'Lacoste'],
+  ['malbon', 'Malbon Golf'], ['flexfit', 'Flexfit'], ['u.s. navy', 'U.S. Navy'],
+  ['universal products', 'Universal Products'], ['holloway', 'Holloway'],
+];
+function brandOf(it: Item): string {
+  const n = `${it.name_kr || ''} ${it.name_en || ''}`.toLowerCase();
+  for (const [kw, b] of BRAND_RULES) if (n.includes(kw)) return b;
+  const c = it.code.toUpperCase();          // 이름이 비어도 묶음 자체가 단일 브랜드인 경우
+  if (/^TH1SW/.test(c)) return 'Russell Athletic';
+  if (/^DT1/.test(c)) return 'Champion';
+  if (/^TH3FC/.test(c)) return 'Patagonia';
+  if (/^TH2DE/.test(c)) return "Levi's";
+  return '';
+}
+// 상품명 앞머리의 (105) (34) 같은 사이즈 토큰
+function sizeOf(it: Item): string {
+  const m = /^\(([^)]{1,8})\)/.exec((it.name_kr || '').trim());
+  return m ? m[1] : '';
 }
 
 export default function InventoryPage() {
@@ -111,6 +161,40 @@ export default function InventoryPage() {
   }, [items, q, statusFilter, batchFilter, noCostOnly]);
 
   const flagged = useMemo(() => items.filter((i) => i.note), [items]);
+
+  // 전 품목 CSV 내보내기 — 옵시디언 판매 분석용. 화면 필터와 무관하게 항상 전체를 담는다.
+  function exportCSV() {
+    const labelOf = (id: string | null) => batches.find((b) => b.id === id)?.label || (id ?? 'PS(개인소장)');
+    const cols = ['품번', '브랜드', '카테고리', '사이즈', '상품명', '사입배치', '상태',
+      '공급가', '판매가', '실판매가', '마진', '판매일', '사입단가USD', '주문번호'];
+    const rows = [...items]
+      .sort((a, b) => (b.sold_date || '').localeCompare(a.sold_date || '') || a.code.localeCompare(b.code))
+      .map((i) => {
+        const revenue = i.sold_price ?? 0;
+        const margin = i.status === 'sold' && i.unit_cost != null && i.sold_price != null ? revenue - i.unit_cost : '';
+        return [
+          i.code, brandOf(i), categoryOf(i, labelOf(i.batch_id)), sizeOf(i),
+          i.name_kr || i.name_en || '', labelOf(i.batch_id),
+          STATUS_LABEL[i.status] || i.status,
+          i.unit_cost ?? '', i.list_price ?? '', i.sold_price ?? '', margin,
+          i.sold_date || '', i.usd ?? '', i.order_no || '',
+        ];
+      });
+    const esc = (v: unknown) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [cols, ...rows].map((r) => r.map(esc).join(',')).join('\r\n');
+    const t = new Date();
+    const stamp = `${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}`;
+    // BOM(U+FEFF)을 붙여야 엑셀에서 한글이 깨지지 않는다
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `헤비듀티_전품목_${stamp}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   function openSell(it: Item) {
     setSelling(it);
@@ -256,6 +340,11 @@ export default function InventoryPage() {
                   <option value="">모든 배치</option>
                   {batches.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
                 </select>
+                <button onClick={exportCSV} title="전 품목을 브랜드·카테고리까지 붙여 CSV로 내려받습니다 (엑셀에서 바로 열림)"
+                  className="px-3 py-2 font-mono text-[10px] tracking-widest uppercase font-bold bg-white hover:bg-black hover:text-white transition-colors"
+                  style={{ border: STRONG_BORDER }}>
+                  ↓ CSV
+                </button>
                 <span className="font-mono text-xs text-[#737373] tabular">{filtered.length}점</span>
                 <button onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(groups.map((g) => g.id)))} className="font-mono text-[10px] px-2 py-2 tracking-widest uppercase hover:bg-[#F5F5F5]" style={{ border: STRONG_BORDER }}>
                   {collapsed.size ? '모두 펼치기' : '모두 접기'}
