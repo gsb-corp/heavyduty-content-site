@@ -32,34 +32,91 @@ const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
 };
 const won = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('ko-KR'));
 
-// 카테고리 — 스키마엔 없어서 제품명(영/한)으로 추론, 이름 없으면 배치명으로. 표시용 그룹핑.
-const CATEGORY_ORDER = ['셔츠', '스웻·니트', '아우터', '데님', '바지', '모자·가방', '벨트', '기타'];
-function catFromText(s: string): string | null {
-  const has = (...ks: string[]) => ks.some((k) => s.includes(k));
-  if (has('levi', '501', '505', '550', 'jean', 'denim', 'orange tab', 'white tab', '리바이스', '청바지', '데님')) return '데님';
-  if (has('sweatshirt', 'sweater', 'reverse weave', 'quarter zip', 'pullover', 'crewneck', 'knit', 'hoodie', '스웻', '스웨트', '스웨터', '니트', '맨투맨', '후드', '후디', '기모')) return '스웻·니트';
-  if (has('jacket', 'vest', 'coat', 'parka', 'windbreaker', 'bomber', 'goretex', 'gore-tex', 'anorak', 'field coat', 'puffer', 'blazer', 'fleece', 'down ', '자켓', '재킷', '코트', '조끼', '베스트', '패딩', '점퍼', '바람막이', '코치', '플리스', '후리스')) return '아우터';
-  if (has('shirt', 'button down', 'button-down', 'flannel', 'ocbd', 'oxford', 'western', 'pearl snap', 'tattersall', 'windowpane', 'plaid', 'tartan', 'check', 'madras', 'polo', 'rugby', '셔츠', '남방')) return '셔츠';
-  if (has('pants', 'shorts', 'trouser', 'chino', 'cargo', 'carpenter', '바지', '팬츠', '치노', '카고', '반바지', '슬랙스', '쇼츠')) return '바지';
-  if (has('cap', 'hat', 'beanie', 'tote', 'bag', 'scarf', 'backpack', '모자', '캡', '비니', '볼캡', '가방', '토트', '스카프', '백팩')) return '모자·가방';
-  if (has('belt', '벨트')) return '벨트';
+// 카테고리 — 스키마엔 없어서 품번·제품명으로 추론. 규칙 순서가 곧 우선순위다.
+// 2026-08-13 전수 점검으로 오분류 20점을 바로잡은 규칙. 순서를 바꾸면 다시 샌다.
+const CATEGORY_ORDER = ['데님', '스웻', '니트', '플리스', '아우터', '셔츠', '바지',
+  '모자', '스카프', '가방', '벨트', '기타'];
+
+// ⚠ 'sweatshirt' 안에 'tshirt'가 들어있다(swea-tshirt) → 단어경계로 잡고 sweatshirt는 뺀다.
+const TSHIRT = /\bt-?\s?shirts?\b|티셔츠/;
+const SWEATSHIRT = /sweat\s?shirt/;
+// ⚠ 데님은 브랜드가 아니라 품목으로 판정한다. 'levi'를 넣으면 리바이스 셔츠까지 하의로 끌려간다.
+//    'jean' 단수는 Jean Paul Gaultier 같은 인명에 걸리므로 제외.
+const DENIM = /\bjean\b(?!\s+paul)|\b(jeans|denim|501|505|550|559|517|560|orange tab|white tab|red tab)\b|청바지|데님/;
+const DENIM_OUTER = /\b(jacket|trucker|chore|coat|vest|blazer|parka)\b|자켓|재킷|코트|조끼/;
+const DENIM_TOP = /\bshirt\b|셔츠|남방/;         // "Nautica Jeans Co ... Shirt" 는 셔츠
+const TIE = /\btie\b(?![\s-]*dye)|넥타이/;        // tie-dye 제외
+// 후드 달린 바람막이는 스웻이 아니라 아우터. 'jacket'은 마스코트명(SCAD Yellow Jacket)에 쓰여 제외.
+const SHELL = /anorak|windbreaker|windshirt|parka|gore-?tex|bomber|blouson|puffer|nano puff|field coat|바람막이|파카/;
+const FLEECE_LINED = /fleece[- ]lined|lined fleece|pile[- ]lined/;  // 안감만 플리스 → 아우터
+
+const CAT_KW: [string, string[]][] = [
+  // 니트를 스웻보다 먼저 — "Quarter Zip Sweater"가 스웻으로 새지 않게.
+  // ⚠ 'v-neck'은 목 모양일 뿐이니 넣지 말 것 ("RUSSELL V-Neck Sweatshirt"가 니트로 샌다).
+  ['니트', ['sweater', 'cardigan', 'turtleneck', 'chunky wool', 'lambswool', 'shetland', 'aran', '니트', '스웨터', '가디건']],
+  // 스웻 강신호 — 품목이 확정되는 말만. 약신호(pullover 등)는 셔츠 뒤로 뺀다.
+  ['스웻', ['sweatshirt', 'sweat shirt', 'reverse weave', 'hoodie', '스웻', '스웨트', '맨투맨', '후드', '후디', '기모']],
+  ['플리스', ['synchilla', 'snap-t', 'snap t', 'micro d', 'micro-d', 'microd', 'retro-x', 'retro x', 'konejo', 'los gatos', 'fleece', 'pile ', '신칠라', '스냅티', '플리스', '후리스', '마이크로디니']],
+  // 모자·스카프·가방을 셔츠보다 먼저 — "Buffalo Check Trucker Cap"의 check, "Rugby Scarf"의 rugby 때문
+  ['스카프', ['scarf', 'muffler', '스카프', '머플러']],
+  ['모자', ['cap', 'hat', 'beanie', 'snapback', '모자', '캡', '비니', '볼캡']],
+  ['가방', ['tote', 'bag', 'briefcase', 'backpack', 'messenger', 'pouch', '가방', '토트', '백팩', '파우치']],
+  // ⚠ 'down' 단독 금지 — "Button-Down Shirt"가 다운자켓으로 잡힌다.
+  ['아우터', ['jacket', 'vest', 'coat', 'parka', 'windbreaker', 'windshirt', 'bomber', 'goretex', 'gore-tex', 'anorak', 'field coat', 'puffer', 'nano puff', 'blazer', 'blouson', 'down jacket', 'down vest', 'goose down', '자켓', '재킷', '코트', '조끼', '베스트', '패딩', '점퍼', '바람막이', '코치']],
+  // 바지를 셔츠보다 먼저 — "Polo Country ... 5 Pocket Pants"의 polo 때문
+  ['바지', ['pants', 'shorts', 'trouser', 'chino', 'cargo', 'carpenter', 'slacks', '바지', '팬츠', '치노', '카고', '반바지', '슬랙스', '쇼츠']],
+  ['셔츠', ['shirt', 'button down', 'button-down', 'flannel', 'ocbd', 'oxford', 'western', 'pearl snap', 'tattersall', 'windowpane', 'plaid', 'tartan', 'check', 'madras', 'polo', 'rugby', '셔츠', '남방']],
+  ['스웻', ['crewneck', 'crew neck', 'pullover', 'quarter zip', '1/4 zip', 'hooded']],   // 약신호
+  ['벨트', ['belt', '벨트']],
+  ['기타', ['watch', 'necktie', 'cufflink', 'wallet', 'automatic day', 'daydate', '시계', '넥타이', '타이', '지갑']],
+];
+const BRAND_ONLY_CAT: [string, string][] = [['parajumpers', '아우터'], ['kodiak', '아우터'], ['gloverall', '아우터']];
+
+function catFromText(raw: string): string | null {
+  const s = (raw || '').toLowerCase();
+  if (TSHIRT.test(s) && !SWEATSHIRT.test(s)) return '셔츠';
+  if (TIE.test(s)) return '기타';
+  if (SHELL.test(s)) return '아우터';
+  if (DENIM.test(s)) {
+    if (DENIM_OUTER.test(s)) return '아우터';
+    if (DENIM_TOP.test(s.replace(SWEATSHIRT, '§'))) return '셔츠';
+    return '데님';
+  }
+  const lined = s.replace(FLEECE_LINED, '§');
+  for (const [cat, kws] of CAT_KW) {
+    const src = cat === '플리스' ? lined : s;
+    if (kws.some((k) => src.includes(k))) return cat;
+  }
+  for (const [kw, cat] of BRAND_ONLY_CAT) if (s.includes(kw)) return cat;
   return null;
 }
+
 function categoryOf(it: Item, batchLabel?: string): string {
-  // HD 품번은 품목코드가 정답 (SH=셔츠 / JK=아우터 / BT=바지 / SW=니트 / DE=데님)
-  const hd = /^HD\d+([A-Z]+)\d+$/.exec(it.code.toUpperCase());
+  const c = it.code.toUpperCase();
+  const name = `${it.name_en || ''} ${it.name_kr || ''}`;
+  const n = name.toLowerCase();
+  // 지퍼 달린 조끼형 스웨터는 조끼여도 본체가 스웨터 → 니트
+  if (n.includes('sweater') && n.includes('vest')) return '니트';
+  // HD 품번은 품목코드가 정답. 단 SW는 스웻/스웨터가 섞여 있어(HD2SW20=Sweatshirt,
+  // HD4SW1=Sweater) 품번으로 못 가른다 → 이름으로 넘긴다.
+  const hd = /^HD\d+([A-Z]+)\d+$/.exec(c);
   if (hd) {
-    const byCode: Record<string, string> = { SH: '셔츠', JK: '아우터', BT: '바지', SW: '스웻·니트', SWS: '스웻·니트', DE: '데님' };
+    const byCode: Record<string, string> = { SH: '셔츠', JK: '아우터', BT: '바지', SWS: '스웻', DE: '데님', PS: '기타' };
+    // JK 품번이어도 실제 물건이 플리스면 플리스 (HD2JK21 Retro Pile Fleece Jacket)
+    if (hd[1] === 'JK' && catFromText(name) === '플리스') return '플리스';
     if (byCode[hd[1]]) return byCode[hd[1]];
   }
-  // 구품번 접두어도 품목이 고정된 묶음이 있음
-  const c = it.code.toUpperCase();
+  // Patagonia 배치는 플리스가 기본이지만 나노퍼프(패딩) 예외가 섞여 있다
+  if (/^TH3FC/.test(c)) return catFromText(name) || '플리스';
   if (/^TH2DE|^DB1DE/.test(c)) return '데님';
-  if (/^TH1SW|^DT1SW|^DT1HD/.test(c)) return '스웻·니트';
-  if (/^TH3FC/.test(c)) return '아우터';
-  if (/^SP1SCV|^BE1BC/.test(c)) return '모자·가방';
-  const name = `${it.name_en || ''} ${it.name_kr || ''}`.toLowerCase();
-  return catFromText(name) || (batchLabel ? catFromText(batchLabel.toLowerCase()) : null) || '기타';
+  if (/^TH1SW|^DT1SW|^DT1HD/.test(c)) return '스웻';
+  if (/^LTD1/.test(c)) return '아우터';
+  if (/^SP1SCV/.test(c)) return '스카프';
+  if (/^BE1BC/.test(c)) return '모자';
+  // 품번 접미사가 품목을 말해주는 경우 (PS_3_타이 · PS_11_스카프 · PS_6_VEST)
+  const suffix = (it.code.match(/_/g) || []).length >= 2 ? it.code.split('_').slice(2).join('_') : '';
+  return catFromText(name) || catFromText(suffix)
+    || (batchLabel ? catFromText(batchLabel) : null) || '기타';
 }
 
 // 브랜드 — 긴 이름 먼저 매칭(폴로 서브라인이 'Ralph Lauren'에 먹히지 않도록)
@@ -83,15 +140,35 @@ const BRAND_RULES: [string, string][] = [
   ['5.11', '5.11 Tactical'], ['warehouse', 'Warehouse & Co.'], ['lacoste', 'Lacoste'],
   ['malbon', 'Malbon Golf'], ['flexfit', 'Flexfit'], ['u.s. navy', 'U.S. Navy'],
   ['universal products', 'Universal Products'], ['holloway', 'Holloway'],
+  ['l.l. bean', 'L.L.Bean'], ['forty seve', 'Forty Seven'], ['a.j.m', 'A.J.M'],
+  ['starter', 'Starter'], ['new era', 'New Era'], ['reebok', 'Reebok'], ['adidas', 'adidas'],
+  ['puma', 'PUMA'], ['umbro', 'Umbro'], ['kappa', 'Kappa'], ['asahi', 'Asahi'],
+  ['j.w.a', 'J.W.A'], ['looney tunes', 'Looney Tunes'], ['nautica jeans', 'Nautica'],
 ];
+// 스카프·모자 로트는 의류 브랜드 축이 없다 → 이름 앞머리(구단명·캡 브랜드)를 브랜드로 쓴다.
+//   "Chelsea Football Scarf" → Chelsea / "A.J.M 'ANACOLOR' Cap" → A.J.M
+const LOT_TAIL = /\s+(football\s+scarf|rugby\s+scarf|scarf|trucker\s+cap|ball\s+cap|mesh\s+cap|snapback|cap|hat)\s*$/i;
+function lotBrandOf(raw: string): string {
+  let core = (raw || '').replace(/\s*\([A-Za-z]{2,6}\d*[A-Za-z]*_?\d+\)\s*$/, '').trim();
+  if (!core || /^\d+$/.test(core)) return '';
+  core = core.replace(LOT_TAIL, '').replace(/\s+(fc|afc)$/i, '').trim();
+  core = core.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+  if (core.length < 2 || /^\d+$/.test(core)) return '';
+  const m = /^([^"'“‘]+)["'“‘]/.exec(core);          // 인용부호 부제가 붙은 형태
+  if (m && m[1].trim().length >= 2) core = m[1].trim();
+  return core.split(/\s+/).slice(0, 4).join(' ');
+}
 function brandOf(it: Item): string {
-  const n = `${it.name_kr || ''} ${it.name_en || ''}`.toLowerCase();
+  const raw = `${it.name_kr || ''} ${it.name_en || ''}`.trim();
+  const n = raw.toLowerCase();
   for (const [kw, b] of BRAND_RULES) if (n.includes(kw)) return b;
   const c = it.code.toUpperCase();          // 이름이 비어도 묶음 자체가 단일 브랜드인 경우
   if (/^TH1SW/.test(c)) return 'Russell Athletic';
   if (/^DT1/.test(c)) return 'Champion';
   if (/^TH3FC/.test(c)) return 'Patagonia';
-  if (/^TH2DE/.test(c)) return "Levi's";
+  if (/^TH2DE|^DB1DE/.test(c)) return "Levi's";
+  if (/^LTD1/.test(c)) return 'Coach Jacket(로트)';
+  if (/^SP1SCV|^BE1BC/.test(c)) return lotBrandOf(raw);
   return '';
 }
 // 상품명 앞머리의 (105) (34) 같은 사이즈 토큰
