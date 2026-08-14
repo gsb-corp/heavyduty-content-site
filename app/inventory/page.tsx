@@ -114,7 +114,13 @@ function categoryOf(it: Item, batchLabel?: string): string {
   // HD4SW1=Sweater) 품번으로 못 가른다 → 이름으로 넘긴다.
   const hd = /^HD\d+([A-Z]+)\d+$/.exec(c);
   if (hd) {
-    const byCode: Record<string, string> = { SH: '셔츠', JK: '아우터', BT: '바지', SWS: '스웻', DE: '데님', PS: '기타' };
+    // 품번 체계 v2 (2026-08-14) — 코드 하나가 카테고리 하나를 확정한다.
+    // SW는 없다: 구품번에서 스웻/스웨터가 섞여 있어 이름으로 판정하고, 신규는 SWS/SWH/SWK를 쓴다.
+    const byCode: Record<string, string> = {
+      SH: '셔츠', SWS: '스웻', SWH: '후드', SWK: '니트', FC: '플리스',
+      JK: '아우터', DE: '데님', BT: '바지', BC: '모자', SCV: '스카프',
+      BG: '가방', BL: '벨트', ET: '기타', PS: '기타',
+    };
     // JK 품번이어도 실제 물건이 플리스면 플리스 (HD2JK21 Retro Pile Fleece Jacket)
     if (hd[1] === 'JK' && catFromText(name) === '플리스') return '플리스';
     if (byCode[hd[1]]) return byCode[hd[1]];
