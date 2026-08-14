@@ -34,7 +34,7 @@ const won = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleStr
 
 // 카테고리 — 스키마엔 없어서 품번·제품명으로 추론. 규칙 순서가 곧 우선순위다.
 // 2026-08-13 전수 점검으로 오분류 20점을 바로잡은 규칙. 순서를 바꾸면 다시 샌다.
-const CATEGORY_ORDER = ['데님', '스웻', '니트', '플리스', '아우터', '셔츠', '바지',
+const CATEGORY_ORDER = ['데님', '스웻', '후드', '니트', '플리스', '아우터', '셔츠', '바지',
   '모자', '스카프', '가방', '벨트', '기타'];
 
 // ⚠ 'sweatshirt' 안에 'tshirt'가 들어있다(swea-tshirt) → 단어경계로 잡고 sweatshirt는 뺀다.
@@ -54,8 +54,11 @@ const CAT_KW: [string, string[]][] = [
   // 니트를 스웻보다 먼저 — "Quarter Zip Sweater"가 스웻으로 새지 않게.
   // ⚠ 'v-neck'은 목 모양일 뿐이니 넣지 말 것 ("RUSSELL V-Neck Sweatshirt"가 니트로 샌다).
   ['니트', ['sweater', 'cardigan', 'turtleneck', 'chunky wool', 'lambswool', 'shetland', 'aran', '니트', '스웨터', '가디건']],
+  // 후드를 스웻보다 먼저 — "Reverse Weave Hoodie"처럼 둘 다 있으면 후드가 이긴다.
+  // (후드 달린 바람막이는 위 SHELL 검사에서 이미 아우터로 빠졌다)
+  ['후드', ['hoodie', 'hoody', '후드', '후디']],
   // 스웻 강신호 — 품목이 확정되는 말만. 약신호(pullover 등)는 셔츠 뒤로 뺀다.
-  ['스웻', ['sweatshirt', 'sweat shirt', 'reverse weave', 'hoodie', '스웻', '스웨트', '맨투맨', '후드', '후디', '기모']],
+  ['스웻', ['sweatshirt', 'sweat shirt', 'reverse weave', '스웻', '스웨트', '맨투맨', '기모']],
   ['플리스', ['synchilla', 'snap-t', 'snap t', 'micro d', 'micro-d', 'microd', 'retro-x', 'retro x', 'konejo', 'los gatos', 'fleece', 'pile ', '신칠라', '스냅티', '플리스', '후리스', '마이크로디니']],
   // 모자·스카프·가방을 셔츠보다 먼저 — "Buffalo Check Trucker Cap"의 check, "Rugby Scarf"의 rugby 때문
   ['스카프', ['scarf', 'muffler', '스카프', '머플러']],
@@ -66,7 +69,8 @@ const CAT_KW: [string, string[]][] = [
   // 바지를 셔츠보다 먼저 — "Polo Country ... 5 Pocket Pants"의 polo 때문
   ['바지', ['pants', 'shorts', 'trouser', 'chino', 'cargo', 'carpenter', 'slacks', '바지', '팬츠', '치노', '카고', '반바지', '슬랙스', '쇼츠']],
   ['셔츠', ['shirt', 'button down', 'button-down', 'flannel', 'ocbd', 'oxford', 'western', 'pearl snap', 'tattersall', 'windowpane', 'plaid', 'tartan', 'check', 'madras', 'polo', 'rugby', '셔츠', '남방']],
-  ['스웻', ['crewneck', 'crew neck', 'pullover', 'quarter zip', '1/4 zip', 'hooded']],   // 약신호
+  ['후드', ['hooded']],   // 약신호 — "Hooded Flannel Shirt"가 셔츠로 가도록 셔츠 뒤에
+  ['스웻', ['crewneck', 'crew neck', 'pullover', 'quarter zip', '1/4 zip']],   // 약신호
   ['벨트', ['belt', '벨트']],
   ['기타', ['watch', 'necktie', 'cufflink', 'wallet', 'automatic day', 'daydate', '시계', '넥타이', '타이', '지갑']],
 ];
@@ -95,8 +99,17 @@ function categoryOf(it: Item, batchLabel?: string): string {
   const c = it.code.toUpperCase();
   const name = `${it.name_en || ''} ${it.name_kr || ''}`;
   const n = name.toLowerCase();
-  // 지퍼 달린 조끼형 스웨터는 조끼여도 본체가 스웨터 → 니트
+  // ⚠ TH3FC는 파타고니아 플리스 배치 40벌. "Better Knit Sweater Vest"는 이름만 스웨터고
+  //   실물은 플리스다(Better Sweater = 플리스 제품군). 이름 판정보다 배치가 우선.
+  //   예외는 나노퍼프(프리마로프트 패딩) 뿐 → 아우터.
+  if (/^TH3FC/.test(c)) return n.includes('puff') ? '아우터' : '플리스';
+  // 그 밖의 스웨터 베스트는 조끼여도 본체가 스웨터 → 니트
   if (n.includes('sweater') && n.includes('vest')) return '니트';
+  // Russell·Champion 스웻 로트는 스웻셔츠와 후디가 섞여 있어 이름으로 가른다. 못 가르면 스웻.
+  if (/^TH1SW|^DT1SW|^DT1HD/.test(c)) {
+    const k = catFromText(name);
+    return k === '후드' || k === '스웻' ? k : '스웻';
+  }
   // HD 품번은 품목코드가 정답. 단 SW는 스웻/스웨터가 섞여 있어(HD2SW20=Sweatshirt,
   // HD4SW1=Sweater) 품번으로 못 가른다 → 이름으로 넘긴다.
   const hd = /^HD\d+([A-Z]+)\d+$/.exec(c);
@@ -106,10 +119,7 @@ function categoryOf(it: Item, batchLabel?: string): string {
     if (hd[1] === 'JK' && catFromText(name) === '플리스') return '플리스';
     if (byCode[hd[1]]) return byCode[hd[1]];
   }
-  // Patagonia 배치는 플리스가 기본이지만 나노퍼프(패딩) 예외가 섞여 있다
-  if (/^TH3FC/.test(c)) return catFromText(name) || '플리스';
   if (/^TH2DE|^DB1DE/.test(c)) return '데님';
-  if (/^TH1SW|^DT1SW|^DT1HD/.test(c)) return '스웻';
   if (/^LTD1/.test(c)) return '아우터';
   if (/^SP1SCV/.test(c)) return '스카프';
   if (/^BE1BC/.test(c)) return '모자';
