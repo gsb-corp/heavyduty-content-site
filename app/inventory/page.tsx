@@ -230,7 +230,11 @@ export default function InventoryPage() {
 
   const stats = useMemo(() => {
     const stock = items.filter((i) => i.status === 'listed');
-    const sold = items.filter((i) => i.status === 'sold');
+    // 증정(송년회 무상)은 판매가 아니다 — 판매수·판매율·마진에서 뺀다 (2026-09-22 윤빈님 지시).
+    // status 로 가르고 싶지만 DB 의 hd_items_status_check 가 gift 를 안 받는다.
+    // 그래서 channel='gift' 를 표식으로 쓴다. note 문자열에 기대는 것보다 안전하다.
+    const gift = items.filter((i) => i.status === 'sold' && i.channel === 'gift');
+    const sold = items.filter((i) => i.status === 'sold' && i.channel !== 'gift');
     // 원가 연결된 판매만 마진 계산 (원가 없는 판매는 별도 집계)
     const soldWithCost = sold.filter((i) => i.unit_cost != null);
     const soldNoCost = sold.filter((i) => i.unit_cost == null);
@@ -242,6 +246,7 @@ export default function InventoryPage() {
     const totalCost = batches.reduce((s, b) => s + (b.cost_total || 0), 0);
     // 재고+판매 만 세면 668점이라 장부 698점과 안 맞는다. 입고대기(케어·촬영 전)를 따로 센다.
     const pending = items.filter((i) => !['listed', 'sold', 'loss'].includes(i.status));
+    const giftCost = gift.reduce((s, i) => s + (i.unit_cost || 0), 0);   // 매출 0이지만 원가는 나간 돈
     // 판매인데 날짜나 금액이 비어 있는 건 — 장부가 덜 채워진 자리다
     const holes = sold.filter((i) => !i.sold_date || i.sold_price == null);
     // ⚠ updated_at 은 쓰지 않는다 — 갱신 트리거가 없어서 실제 수정일보다 옛날 날짜가 찍힌다.
@@ -254,6 +259,7 @@ export default function InventoryPage() {
       marginN: soldWithCost.length, margin: revenueWC - soldCost, soldCost,
       noCostN: soldNoCost.length, revenueNC,
       pendingN: pending.length, holesN: holes.length, lastSold,
+      giftN: gift.length, giftCost,
     };
   }, [items, batches]);
 
@@ -374,8 +380,12 @@ export default function InventoryPage() {
           <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold">장부 총계</span>
           <span className="text-sm tabular">
             <b>{items.length}점</b>
-            <span className="text-[#555]"> = 재고 <b>{stats.stockN}</b> + 입고대기 <b>{stats.pendingN}</b> + 판매 <b>{stats.soldN}</b></span>
+            <span className="text-[#555]"> = 재고 <b>{stats.stockN}</b> + 입고대기 <b>{stats.pendingN}</b> + 판매 <b>{stats.soldN}</b>
+              {stats.giftN > 0 && <> + 증정 <b>{stats.giftN}</b></>}</span>
           </span>
+          {stats.giftN > 0 && (
+            <span className="font-mono text-[10px] text-[#737373]">· 증정 {stats.giftN}점은 무상이라 판매·마진에서 뺌 (원가 {won(stats.giftCost)}원)</span>
+          )}
           {stats.holesN > 0 && (
             <span className="font-mono text-[10px] font-bold text-[#B45309]">· 판매인데 날짜·금액이 빈 건 {stats.holesN}건</span>
           )}
@@ -423,7 +433,9 @@ export default function InventoryPage() {
 
           const ItemRow = (it: Item) => {
             const sc = STATUS_COLOR[it.status] || STATUS_COLOR.listed;
-            const margin = it.status === 'sold' && it.sold_price != null && it.unit_cost != null ? it.sold_price - it.unit_cost : null;
+            const isGift = it.status === 'sold' && it.channel === 'gift';
+            // 증정은 마진을 안 그린다 — 0원에서 원가를 빼면 늘 빨간 손실로 보여 오해를 준다
+            const margin = !isGift && it.status === 'sold' && it.sold_price != null && it.unit_cost != null ? it.sold_price - it.unit_cost : null;
             return (
               <tr key={it.id} style={{ borderBottom: '1px solid #EDEDED' }}>
                 <td className="px-3 py-2 font-mono font-bold text-xs whitespace-nowrap">{it.code}{it.note && <span title={it.note}> ⚠️</span>}</td>
@@ -443,7 +455,7 @@ export default function InventoryPage() {
                     : it.status === 'sold' ? <span className="text-[#B45309] font-bold">날짜없음</span> : '—'}
                   {it.channel && <div className="text-[9px] text-[#737373]">{CHANNEL_LABEL[it.channel] || it.channel}</div>}
                 </td>
-                <td className="px-2 py-2 text-center"><span className="font-mono text-[9px] px-1.5 py-0.5 font-bold" style={{ background: sc.bg, color: sc.fg, border: '1px solid #000' }}>{STATUS_LABEL[it.status] || it.status}</span></td>
+                <td className="px-2 py-2 text-center"><span className="font-mono text-[9px] px-1.5 py-0.5 font-bold" style={isGift ? { background: '#EDEDED', color: '#000', border: '1px solid #000' } : { background: sc.bg, color: sc.fg, border: '1px solid #000' }}>{isGift ? '증정' : (STATUS_LABEL[it.status] || it.status)}</span></td>
                 <td className="px-2 py-2 text-center whitespace-nowrap">
                   {it.status === 'listed'
                     ? <button onClick={() => openSell(it)} className="font-mono text-[10px] px-2 py-1 font-bold bg-black text-white hover:opacity-75">판매</button>
@@ -489,10 +501,11 @@ export default function InventoryPage() {
 
               {groups.map((g) => {
                 const isCol = collapsed.has(g.id);
-                const soldN = g.items.filter((i) => i.status === 'sold').length;
+                const giftN = g.items.filter((i) => i.status === 'sold' && i.channel === 'gift').length;
+                const soldN = g.items.filter((i) => i.status === 'sold' && i.channel !== 'gift').length;
                 // 입고대기를 재고에 섞으면 상단 카드(재고 261)와 안 맞는다 → 따로 센다
                 const pendN = g.items.filter((i) => !['listed', 'sold', 'loss'].includes(i.status)).length;
-                const stockN = g.items.length - soldN - pendN;
+                const stockN = g.items.length - soldN - pendN - giftN;
                 const sellPct = g.items.length ? Math.round((soldN / g.items.length) * 100) : 0;
                 return (
                   <div key={g.id} className="mb-3" style={{ border: STRONG_BORDER }}>
@@ -507,6 +520,7 @@ export default function InventoryPage() {
                         <b className="text-black">재고 {stockN}</b>
                         {pendN > 0 && <span className="text-[#B45309]"> / 입고대기 {pendN}</span>}
                         <span className="text-[#737373]"> / 판매 {soldN}</span>
+                        {giftN > 0 && <span className="text-[#737373]"> / 증정 {giftN}</span>}
                         <span className="text-[#BBB]"> · {g.items.length}점</span>
                       </span>
                     </button>
