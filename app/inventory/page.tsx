@@ -11,6 +11,8 @@ interface Batch {
   cost_product: number | null; cost_vat: number | null; cost_duty: number | null;
   cost_ship_intl: number | null; cost_ship_dom: number | null; cost_etc: number | null;
   cost_total: number | null; qty_declared: number | null; qty_loss: number | null;
+  // note 가 ★ 로 시작하면 특이 배치 — 평균에서 갈라 센다
+  note: string | null;
 }
 interface Item {
   id: string; code: string; batch_id: string | null;
@@ -244,6 +246,20 @@ export default function InventoryPage() {
     const revenueNC = soldNoCost.reduce((s, i) => s + (i.sold_price || 0), 0);     // 원가없는 판매 매출
     const stockCost = stock.reduce((s, i) => s + (i.unit_cost || 0), 0);
     const totalCost = batches.reduce((s, b) => s + (b.cost_total || 0), 0);
+    // ── 특이 배치 분리 (2026-09-22 윤빈님 지시 "플리스는 특이사항 케이스로 관리")
+    // 배치 note 가 ★ 로 시작하면 특이 배치. 지금은 파타고니아 플리스 하나뿐이다.
+    //   80벌 계약인데 사고로 40벌만 입고돼 지불액 전액이 40점에 실렸다(개당 89,064원,
+    //   정상 입고였다면 44,532원). 원가가 두 배로 잡힌 것이지 가격 책정 실패가 아니다.
+    // 이걸 섞어 평균 내면 전체 마진이 55% → 46% 로 깎여 사입 판단을 흐린다.
+    const oddIds = new Set(batches.filter((b) => (b.note || '').trim().startsWith('★')).map((b) => b.id));
+    const isOdd = (i: Item) => i.batch_id != null && oddIds.has(i.batch_id);
+    const nSold = sold.filter((i) => !isOdd(i));
+    const nRev = nSold.reduce((s, i) => s + (i.sold_price || 0), 0);
+    const nCost = nSold.reduce((s, i) => s + (i.unit_cost || 0), 0);
+    const oSold = sold.filter(isOdd);
+    const oRev = oSold.reduce((s, i) => s + (i.sold_price || 0), 0);
+    const oCost = oSold.reduce((s, i) => s + (i.unit_cost || 0), 0);
+    const oddLabel = batches.find((b) => oddIds.has(b.id))?.label || '특이 배치';
     // 재고+판매 만 세면 668점이라 장부 698점과 안 맞는다. 입고대기(케어·촬영 전)를 따로 센다.
     const pending = items.filter((i) => !['listed', 'sold', 'loss'].includes(i.status));
     const giftCost = gift.reduce((s, i) => s + (i.unit_cost || 0), 0);   // 매출 0이지만 원가는 나간 돈
@@ -260,6 +276,8 @@ export default function InventoryPage() {
       noCostN: soldNoCost.length, revenueNC,
       pendingN: pending.length, holesN: holes.length, lastSold,
       giftN: gift.length, giftCost,
+      oddN: oSold.length, oddRev: oRev, oddMargin: oRev - oCost, oddLabel, oddIds,
+      normN: nSold.length, normRev: nRev, normMargin: nRev - nCost,
     };
   }, [items, batches]);
 
@@ -364,7 +382,10 @@ export default function InventoryPage() {
           {[
             { k: '재고', v: `${stats.stockN}점`, s: `원가 ${won(stats.stockCost)}원` },
             { k: '판매 (전체)', v: `${stats.soldN}점`, s: `매출 ${won(stats.revenue)}원` },
-            { k: '판매 마진 (원가확인분)', v: `${won(stats.margin)}원`, s: `${stats.marginN}점 · 원가 ${won(stats.soldCost)}원` },
+            // 마진은 정상 사입 기준으로 본다 — 특이 배치를 섞으면 사입 판단이 흐려진다
+            { k: stats.oddN ? '판매 마진 (특이 제외)' : '판매 마진',
+              v: `${won(stats.normMargin)}원`,
+              s: stats.normRev ? `${stats.normN}점 · ${(stats.normMargin / stats.normRev * 100).toFixed(1)}%` : '—' },
             { k: '총 사입원가', v: `${won(stats.totalCost)}원`, s: `회수율 ${stats.totalCost ? Math.round((stats.revenue / stats.totalCost) * 100) : 0}%` },
           ].map((c) => (
             <div key={c.k} className="p-4" style={{ border: STRONG_BORDER }}>
@@ -380,7 +401,9 @@ export default function InventoryPage() {
           <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold">장부 총계</span>
           <span className="text-sm tabular">
             <b>{items.length}점</b>
-            <span className="text-[#555]"> = 재고 <b>{stats.stockN}</b> + 입고대기 <b>{stats.pendingN}</b> + 판매 <b>{stats.soldN}</b>
+            <span className="text-[#555]"> = 재고 <b>{stats.stockN}</b>
+              {stats.pendingN > 0 && <> + 입고대기 <b>{stats.pendingN}</b></>}
+              {' + 판매 '}<b>{stats.soldN}</b>
               {stats.giftN > 0 && <> + 증정 <b>{stats.giftN}</b></>}</span>
           </span>
           {stats.giftN > 0 && (
@@ -393,6 +416,19 @@ export default function InventoryPage() {
             <span className="font-mono text-[10px] text-[#737373] ml-auto tabular">최근 판매 {stats.lastSold}</span>
           )}
         </div>
+
+        {/* 특이 배치 — 평균에 섞으면 사입 판단이 흐려져 따로 보여준다 */}
+        {stats.oddN > 0 && (
+          <div className="mb-8 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1"
+            style={{ border: '2px solid #A3A3A3', background: '#FAFAFA' }}>
+            <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold text-[#555]">특이 배치</span>
+            <span className="text-sm">
+              {stats.oddLabel} — 판매 <b>{stats.oddN}점</b> · 매출 <b>{won(stats.oddRev)}원</b> ·
+              <b className={stats.oddMargin < 0 ? 'text-[#C0392B]' : ''}> 마진 {won(stats.oddMargin)}원</b>
+            </span>
+            <span className="font-mono text-[10px] text-[#737373]">위 마진 카드에서 빼고 셌습니다 · 사유는 배치 탭 참고</span>
+          </div>
+        )}
 
         {/* 원가 없는 판매 — 매출엔 잡히지만 원가 미연결이라 마진에서 제외 */}
         {stats.noCostN > 0 && (
@@ -572,7 +608,15 @@ export default function InventoryPage() {
                   const soldN = bi.filter((i) => i.status === 'sold').length;
                   return (
                     <tr key={b.id} style={{ borderBottom: '1px solid #E5E5E5' }}>
-                      <td className="px-3 py-2 text-xs font-bold">{b.label}<div className="font-mono text-[9px] text-[#737373]">{b.source}</div></td>
+                      <td className="px-3 py-2 text-xs font-bold">
+                        {b.label}
+                        <div className="font-mono text-[9px] text-[#737373]">{b.source}</div>
+                        {/* 사입 사고 같은 특이사항은 숫자만 봐선 알 수 없다 — 사유를 같이 보여준다 */}
+                        {b.note && (
+                          <div className={`text-[10px] font-normal mt-1 leading-snug ${b.note.trim().startsWith('★') ? 'text-[#B45309]' : 'text-[#737373]'}`}
+                            style={{ maxWidth: 420 }}>{b.note}</div>
+                        )}
+                      </td>
                       <td className="px-2 py-2 text-right font-mono tabular text-xs">{bi.length}점</td>
                       <td className="px-2 py-2 text-right font-mono tabular text-xs hidden md:table-cell">{won(b.cost_product)}</td>
                       <td className="px-2 py-2 text-right font-mono tabular text-xs hidden md:table-cell">{won((b.cost_vat || 0) + (b.cost_duty || 0))}</td>
