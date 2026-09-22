@@ -19,11 +19,17 @@ interface Item {
   list_price: number | null; sold_price: number | null;
   status: string; arrived_date: string | null; sold_date: string | null;
   order_no: string | null; source: string | null; note: string | null;
+  // ⚠ source 는 사입경로(lot/ebay/sales_only), channel 은 판매채널이다. 둘은 다른 것.
+  channel: string | null; updated_at: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  ordered: '주문', shipping: '배송중', arrived: '입고', care: '케어',
+  ordered: '주문', shipping: '배송중', arrived: '입고대기', care: '케어',
   listed: '재고', sold: '판매', loss: '로스',
+};
+// 판매채널 — 2026-09 이후 판매분만 채워져 있다. 그 전 건은 빈 값이 정상.
+const CHANNEL_LABEL: Record<string, string> = {
+  online: '자사몰', showroom: '쇼룸', fruits: '후르츠', bunjang: '번개장터', other: '기타',
 };
 const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
   listed: { bg: '#FFF', fg: '#000' }, sold: { bg: '#1A7F37', fg: '#FFF' },
@@ -200,7 +206,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'list' | 'batches' | 'flags'>('list');
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'listed' | 'sold'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'listed' | 'sold' | 'pending'>('all');
   const [batchFilter, setBatchFilter] = useState<string>('');
   const [groupMode, setGroupMode] = useState<'category' | 'batch'>('category');
   const [selling, setSelling] = useState<Item | null>(null);
@@ -234,11 +240,20 @@ export default function InventoryPage() {
     const revenueNC = soldNoCost.reduce((s, i) => s + (i.sold_price || 0), 0);     // 원가없는 판매 매출
     const stockCost = stock.reduce((s, i) => s + (i.unit_cost || 0), 0);
     const totalCost = batches.reduce((s, b) => s + (b.cost_total || 0), 0);
+    // 재고+판매 만 세면 668점이라 장부 698점과 안 맞는다. 입고대기(케어·촬영 전)를 따로 센다.
+    const pending = items.filter((i) => !['listed', 'sold', 'loss'].includes(i.status));
+    // 판매인데 날짜나 금액이 비어 있는 건 — 장부가 덜 채워진 자리다
+    const holes = sold.filter((i) => !i.sold_date || i.sold_price == null);
+    // ⚠ updated_at 은 쓰지 않는다 — 갱신 트리거가 없어서 실제 수정일보다 옛날 날짜가 찍힌다.
+    //   (2026-09-22 확인: 9/21~22 정정분이 반영 안 돼 9/18로 표시됐다)
+    //   대신 실제로 계산 가능한 '가장 최근 판매일'을 기준선으로 보여준다.
+    const lastSold = sold.reduce((m, i) => (i.sold_date && i.sold_date > m ? i.sold_date : m), '');
     return {
       stockN: stock.length, soldN: sold.length,
       revenue, stockCost, totalCost,
       marginN: soldWithCost.length, margin: revenueWC - soldCost, soldCost,
       noCostN: soldNoCost.length, revenueNC,
+      pendingN: pending.length, holesN: holes.length, lastSold,
     };
   }, [items, batches]);
 
@@ -246,7 +261,8 @@ export default function InventoryPage() {
     const qq = q.trim().toUpperCase();
     return items.filter((i) => {
       if (noCostOnly && !(i.status === 'sold' && i.unit_cost == null)) return false;
-      if (statusFilter !== 'all' && i.status !== statusFilter) return false;
+      if (statusFilter === 'pending') { if (['listed', 'sold', 'loss'].includes(i.status)) return false; }
+      else if (statusFilter !== 'all' && i.status !== statusFilter) return false;
       if (batchFilter && i.batch_id !== batchFilter) return false;
       if (qq && !(i.code.includes(qq) || (i.name_en || '').toUpperCase().includes(qq) || (i.name_kr || '').toUpperCase().includes(qq))) return false;
       return true;
@@ -258,8 +274,8 @@ export default function InventoryPage() {
   // 전 품목 CSV 내보내기 — 옵시디언 판매 분석용. 화면 필터와 무관하게 항상 전체를 담는다.
   function exportCSV() {
     const labelOf = (id: string | null) => batches.find((b) => b.id === id)?.label || (id ?? 'PS(개인소장)');
-    const cols = ['품번', '브랜드', '카테고리', '사이즈', '상품명', '사입배치', '상태',
-      '공급가', '판매가', '실판매가', '마진', '판매일', '사입단가USD', '주문번호'];
+    const cols = ['품번', '브랜드', '카테고리', '사이즈', '상품명', '사입배치', '상태', '입고일',
+      '공급가', '판매가', '실판매가', '마진', '판매일', '채널', '사입단가USD', '주문번호'];
     const rows = [...items]
       .sort((a, b) => (b.sold_date || '').localeCompare(a.sold_date || '') || a.code.localeCompare(b.code))
       .map((i) => {
@@ -268,9 +284,10 @@ export default function InventoryPage() {
         return [
           i.code, brandOf(i), categoryOf(i, labelOf(i.batch_id)), sizeOf(i),
           i.name_kr || i.name_en || '', labelOf(i.batch_id),
-          STATUS_LABEL[i.status] || i.status,
+          STATUS_LABEL[i.status] || i.status, i.arrived_date || '',
           i.unit_cost ?? '', i.list_price ?? '', i.sold_price ?? '', margin,
-          i.sold_date || '', i.usd ?? '', i.order_no || '',
+          i.sold_date || '', i.channel ? (CHANNEL_LABEL[i.channel] || i.channel) : '',
+          i.usd ?? '', i.order_no || '',
         ];
       });
     const esc = (v: unknown) => {
@@ -352,6 +369,21 @@ export default function InventoryPage() {
           ))}
         </div>
 
+        {/* 장부 총계 — 카드만 보면 재고+판매가 총계와 안 맞아 보인다. 식을 그대로 적는다. */}
+        <div className="mb-3 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ border: STRONG_BORDER, background: '#F0F0F0' }}>
+          <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold">장부 총계</span>
+          <span className="text-sm tabular">
+            <b>{items.length}점</b>
+            <span className="text-[#555]"> = 재고 <b>{stats.stockN}</b> + 입고대기 <b>{stats.pendingN}</b> + 판매 <b>{stats.soldN}</b></span>
+          </span>
+          {stats.holesN > 0 && (
+            <span className="font-mono text-[10px] font-bold text-[#B45309]">· 판매인데 날짜·금액이 빈 건 {stats.holesN}건</span>
+          )}
+          {stats.lastSold && (
+            <span className="font-mono text-[10px] text-[#737373] ml-auto tabular">최근 판매 {stats.lastSold}</span>
+          )}
+        </div>
+
         {/* 원가 없는 판매 — 매출엔 잡히지만 원가 미연결이라 마진에서 제외 */}
         {stats.noCostN > 0 && (
           <button
@@ -394,14 +426,22 @@ export default function InventoryPage() {
             return (
               <tr key={it.id} style={{ borderBottom: '1px solid #EDEDED' }}>
                 <td className="px-3 py-2 font-mono font-bold text-xs whitespace-nowrap">{it.code}{it.note && <span title={it.note}> ⚠️</span>}</td>
-                <td className="px-2 py-2 hidden md:table-cell text-xs text-[#404040]">{it.name_kr || it.name_en || <span className="text-[#BBB]">—</span>}</td>
+                <td className="px-2 py-2 hidden md:table-cell text-xs text-[#404040]">
+                  {brandOf(it) && <span className="font-mono text-[9px] tracking-wide uppercase text-[#737373] font-bold mr-1.5">{brandOf(it)}</span>}
+                  {it.name_kr || it.name_en || <span className="text-[#BBB]">—</span>}
+                </td>
+                <td className="px-2 py-2 text-center font-mono tabular text-[11px] text-[#737373] whitespace-nowrap hidden lg:table-cell">{it.arrived_date ? it.arrived_date.slice(2).replace(/-/g, '.') : '—'}</td>
                 <td className="px-2 py-2 text-right font-mono tabular text-xs">{won(it.unit_cost)}</td>
                 <td className="px-2 py-2 text-right font-mono tabular text-xs hidden sm:table-cell">{won(it.list_price)}</td>
                 <td className="px-2 py-2 text-right font-mono tabular text-xs font-bold">
                   {won(it.sold_price)}
                   {margin != null && <div className={`text-[9px] ${margin >= 0 ? 'text-[#1A7F37]' : 'text-[#C0392B]'}`}>{margin >= 0 ? '+' : ''}{won(margin)}</div>}
                 </td>
-                <td className="px-2 py-2 text-center font-mono tabular text-[11px] text-[#555] whitespace-nowrap hidden sm:table-cell">{it.sold_date ? it.sold_date.slice(2).replace(/-/g, '.') : '—'}</td>
+                <td className="px-2 py-2 text-center font-mono tabular text-[11px] text-[#555] whitespace-nowrap hidden sm:table-cell">
+                  {it.sold_date ? it.sold_date.slice(2).replace(/-/g, '.')
+                    : it.status === 'sold' ? <span className="text-[#B45309] font-bold">날짜없음</span> : '—'}
+                  {it.channel && <div className="text-[9px] text-[#737373]">{CHANNEL_LABEL[it.channel] || it.channel}</div>}
+                </td>
                 <td className="px-2 py-2 text-center"><span className="font-mono text-[9px] px-1.5 py-0.5 font-bold" style={{ background: sc.bg, color: sc.fg, border: '1px solid #000' }}>{STATUS_LABEL[it.status] || it.status}</span></td>
                 <td className="px-2 py-2 text-center whitespace-nowrap">
                   {it.status === 'listed'
@@ -425,7 +465,7 @@ export default function InventoryPage() {
                   ))}
                 </div>
                 <div className="flex" style={{ border: STRONG_BORDER }}>
-                  {([['all', '전체'], ['listed', '재고'], ['sold', '판매']] as const).map(([v, l], i) => (
+                  {([['all', '전체'], ['listed', '재고'], ['pending', '입고대기'], ['sold', '판매']] as const).map(([v, l], i) => (
                     <button key={v} onClick={() => setStatusFilter(v)} className={`px-3 py-2 font-mono text-[10px] tracking-widest uppercase font-bold ${statusFilter === v ? 'bg-black text-white' : 'bg-white'}`} style={{ borderLeft: i > 0 ? '2px solid #000' : 'none' }}>{l}</button>
                   ))}
                 </div>
@@ -449,7 +489,9 @@ export default function InventoryPage() {
               {groups.map((g) => {
                 const isCol = collapsed.has(g.id);
                 const soldN = g.items.filter((i) => i.status === 'sold').length;
-                const stockN = g.items.length - soldN;
+                // 입고대기를 재고에 섞으면 상단 카드(재고 261)와 안 맞는다 → 따로 센다
+                const pendN = g.items.filter((i) => !['listed', 'sold', 'loss'].includes(i.status)).length;
+                const stockN = g.items.length - soldN - pendN;
                 const sellPct = g.items.length ? Math.round((soldN / g.items.length) * 100) : 0;
                 return (
                   <div key={g.id} className="mb-3" style={{ border: STRONG_BORDER }}>
@@ -462,6 +504,7 @@ export default function InventoryPage() {
                       </span>
                       <span className="font-mono text-[11px] tabular ml-auto shrink-0">
                         <b className="text-black">재고 {stockN}</b>
+                        {pendN > 0 && <span className="text-[#B45309]"> / 입고대기 {pendN}</span>}
                         <span className="text-[#737373]"> / 판매 {soldN}</span>
                         <span className="text-[#BBB]"> · {g.items.length}점</span>
                       </span>
@@ -472,11 +515,12 @@ export default function InventoryPage() {
                           <thead>
                             <tr className="font-mono text-[9px] tracking-[0.1em] uppercase text-[#737373]" style={{ borderBottom: '1.5px solid #A3A3A3', background: '#FAFAFA' }}>
                               <th className="text-left px-3 py-1.5">품번</th>
-                              <th className="text-left px-2 py-1.5 hidden md:table-cell">제품명</th>
+                              <th className="text-left px-2 py-1.5 hidden md:table-cell">브랜드 · 제품명</th>
+                              <th className="text-center px-2 py-1.5 hidden lg:table-cell">입고일</th>
                               <th className="text-right px-2 py-1.5">원가</th>
                               <th className="text-right px-2 py-1.5 hidden sm:table-cell">책정가</th>
                               <th className="text-right px-2 py-1.5">실판매</th>
-                              <th className="text-center px-2 py-1.5 hidden sm:table-cell">판매일</th>
+                              <th className="text-center px-2 py-1.5 hidden sm:table-cell">판매일 · 채널</th>
                               <th className="text-center px-2 py-1.5">상태</th>
                               <th className="text-center px-2 py-1.5">처리</th>
                             </tr>
