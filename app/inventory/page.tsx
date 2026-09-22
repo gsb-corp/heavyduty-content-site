@@ -393,7 +393,8 @@ export default function InventoryPage() {
           >
             <span className="font-mono text-[10px] tracking-[0.12em] uppercase font-bold text-[#B45309]">⚠ 원가 없는 판매</span>
             <span className="text-sm"><b>{stats.noCostN}점</b> · 매출 <b>{won(stats.revenueNC)}원</b> — 판매는 확정, 원가 미연결이라 위 마진엔 미포함</span>
-            <span className="font-mono text-[10px] text-[#B45309] font-bold ml-auto">{noCostOnly ? '✕ 전체 보기로' : '👉 이 51건만 보기'}</span>
+            {/* 건수는 계산값을 쓴다 — 전에 '51건'이 하드코딩돼 실제와 어긋났다 (2026-09-22) */}
+            <span className="font-mono text-[10px] text-[#B45309] font-bold ml-auto">{noCostOnly ? '✕ 전체 보기로' : `👉 이 ${stats.noCostN}건만 보기`}</span>
           </button>
         )}
 
